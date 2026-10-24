@@ -1,0 +1,12 @@
+# Dépendances du serveur (1 Go de RAM partagé) : sans faster-whisper (les vocaux passent par Groq)
+litellm>=1.50
+python-telegram-bot>=21.0,<22
+python-dotenv>=1.0
+pydantic>=2.5
+PyYAML>=6.0
+APScheduler>=3.10,<4
+tzdata>=2024.1
+google-api-python-client>=2.100
+google-auth>=2.23
+google-auth-oauthlib>=1.1
+pypdf>=4.0

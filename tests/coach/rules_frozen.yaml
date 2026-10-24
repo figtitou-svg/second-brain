@@ -1,0 +1,17 @@
+# Hypothèses par défaut (PROJECT.md §7.3) : à ajuster avec les vrais horaires.
+timezone: Europe/Paris
+allowed_hours:
+  weekday: ["08:00", "22:00"]
+  weekend: ["10:00", "20:00"]
+blocked:
+  - { day: "tuesday",  from: "18:30", to: "21:30", label: "Entraînement rugby" }
+  - { day: "thursday", from: "18:30", to: "21:30", label: "Entraînement rugby" }
+  - { day: "wednesday", from: "18:00", to: "20:00", label: "Créneau occupé (mercredi)" }
+  - { day: "thursday",  from: "14:00", to: "16:00", label: "Créneau occupé (jeudi)" }
+buffer_minutes: 15
+max_block_minutes: 120
+min_block_minutes: 25
+max_focus_hours_per_day: 3
+reminder_lead_minutes: 15
+briefing_time: "07:45"
+max_reschedules: 3

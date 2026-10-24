@@ -1,0 +1,23 @@
+# Exemple d'unité systemd (VM Linux). Adapter User et WorkingDirectory, puis :
+#   sudo cp deploy/second-brain.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now second-brain
+#   journalctl -u second-brain -f
+[Unit]
+Description=Second Brain (Telegram bot + scheduling coach + Gmail + Drive)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/second-brain
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/second-brain/.venv/bin/python run.py
+Restart=always
+RestartSec=15
+Nice=10
+# Shared small VM: cap memory so the bot cannot starve other services.
+MemoryHigh=380M
+MemoryMax=480M
+
+[Install]
+WantedBy=multi-user.target

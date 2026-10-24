@@ -1,0 +1,46 @@
+# Règles du planificateur : plages autorisées, créneaux interdits, marges. Modifiable à tout moment.
+timezone: Europe/Paris
+
+# Jamais de bloc de travail en dehors de ces heures (rien après 22h en semaine).
+allowed_hours:
+  weekday: ["08:00", "22:00"]
+  weekend: ["10:00", "20:00"]
+
+# Relances proactives du bot (focus, projets qui stagnent, suites de projet) : jamais en soirée tardive,
+# un rappel à 21h55 ne sert à rien. Les messages liés à un bloc ou un rendez-vous ne sont pas concernés.
+reminder_hours:
+  weekday: ["08:30", "20:30"]
+  weekend: ["10:00", "19:00"]
+
+blocked:
+  - { day: "tuesday",   from: "18:30", to: "21:30", label: "Entraînement rugby" }
+  - { day: "thursday",  from: "18:30", to: "21:30", label: "Entraînement rugby" }
+  - { day: "wednesday", from: "18:00", to: "20:00", label: "Créneau occupé (mercredi)" }
+  - { day: "thursday",  from: "14:00", to: "16:00", label: "Créneau occupé (jeudi)" }
+  # Repas du midi : 1 h libre chaque jour. Les 5 min de marge (buffer_minutes) s'ajoutent de part et
+  # d'autre, donc 12:35-13:25 bloqué = rien entre 12:30 et 13:30.
+  - { day: "monday",    from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "tuesday",   from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "wednesday", from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "thursday",  from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "friday",    from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "saturday",  from: "12:35", to: "13:25", label: "Repas" }
+  - { day: "sunday",    from: "12:35", to: "13:25", label: "Repas" }
+
+buffer_minutes: 5   # marge courte : widget téléphone illisible si blocs collés/chevauchants
+max_block_minutes: 120
+min_block_minutes: 25
+max_focus_hours_per_day: 5   # était 3
+reminder_lead_minutes: 15
+briefing_time: "07:45"
+weekly_recap_time: "18:00"   # dimanche
+max_reschedules: 3
+
+# Une tâche avec échéance ne démarre pas plus tôt que « échéance - N jours », selon sa durée estimée :
+# inutile de bloquer des semaines à l'avance « prendre les chaussures » (5 min), alors qu'un gros dossier
+# se prépare sur plusieurs jours. Sans palier, tout est placé au plus tôt. Dernier palier = au-delà.
+start_lead_days:
+  - { up_to_minutes: 15,  days: 0 }
+  - { up_to_minutes: 60,  days: 2 }
+  - { up_to_minutes: 120, days: 4 }
+  - { days: 7 }

@@ -1,0 +1,3 @@
+# Développement local (tests) : dépendances du serveur + pytest
+-r requirements-server.txt
+pytest>=8.0

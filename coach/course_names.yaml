@@ -1,0 +1,23 @@
+# Code de matière de l'emploi du temps INSA (ADE) -> nom affiché dans le bot.
+# Un code absent de cette liste est affiché tel quel (POO1, TSI...). Complète-la à ta guise :
+# le nom apparaît à la place du code dans /today, /semaine et les réponses du bot.
+AC: Architecture des circuits
+ALGO: Algorithmes
+EPS: EPS
+MD: Modélisation des données
+MP: Modélisation des processus
+OP: Outils de programmation
+PRC: Programmation en C
+# À compléter (codes vus dans ton emploi du temps) :
+# AO:
+# BDR:
+# CMSI:
+# POO1:
+# POO2:
+# TSI:
+# SHC1-HU:
+# LV1:
+# LV2:
+# ANG-3:
+# ESP:
+# SPE:

@@ -1,0 +1,14 @@
+.env
+.pytest_cache/
+.venv/
+__pycache__/
+secrets/
+worktrees/
+data/
+
+# Local artefacts
+*.sqlite
+*.bak
+*.tgz
+*.bundle
+.claude/
