@@ -2,9 +2,38 @@
 
 *[Version française](README.fr.md)*
 
+![python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![interface](https://img.shields.io/badge/interface-Telegram-26A5E4?logo=telegram&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-Groq_·_Gemini_·_Ollama-8A2BE2) ![calendar](https://img.shields.io/badge/calendar-Google_Calendar-4285F4?logo=googlecalendar&logoColor=white)
+
 A personal "second brain" that lives in Telegram. It reads my mail, documents and voice notes, answers questions about them with sources, and — above all — **turns tasks into calendar blocks and keeps nagging me until they are done**.
 
 Built to run for free on a small always-on VM (free-tier APIs, 1 GB of RAM).
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+  subgraph In[Capture]
+    TG[Telegram<br/>text and voice]
+    GM[Gmail]
+    DR[Google Drive]
+    NO[Notion deadlines]
+  end
+  In --> EX[LLM extraction<br/>tasks and events]
+  EX --> DD[Deduplication]
+  DD --> PL[Planner<br/>pure and tested]
+  PL --> GC[(Google Calendar)]
+  GC --> CO[Coach<br/>briefing, reminders, follow-up]
+  CO --> TG
+  RT[Sensitivity-aware<br/>LLM router] -.-> EX
+```
+
+## Engineering highlights
+
+- **A pure, heavily tested planner.** `coach/planner.py` has no I/O; invariants (no overlap, working hours, daily cap, deadlines) are asserted across the 570+ tests.
+- **Privacy by construction.** Every item carries a sensitivity level, and the LLM router refuses to send `private` content to a cloud model.
+- **No duplicate events, ever.** Calendar event IDs are derived deterministically and every incoming task or appointment is compared with what already exists (mail, notes, Notion, calendar).
+- **Fails visibly and recovers.** A revoked Google token no longer crashes the bot into a restart loop: services are built lazily, the failing jobs raise an alert, and everything resumes as soon as the token is replaced.
+- **Runs on a 1 GB free-tier VM** under a systemd memory cap, on free API quotas that the bot itself tracks.
 
 ## What it does
 

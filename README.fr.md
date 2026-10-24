@@ -2,9 +2,38 @@
 
 *[English version](README.md)*
 
+![python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![interface](https://img.shields.io/badge/interface-Telegram-26A5E4?logo=telegram&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-Groq_·_Gemini_·_Ollama-8A2BE2) ![calendar](https://img.shields.io/badge/calendar-Google_Calendar-4285F4?logo=googlecalendar&logoColor=white)
+
 Un « second cerveau » personnel qui vit dans Telegram. Il lit mes mails, mes documents et mes notes vocales, répond à mes questions en citant ses sources et, surtout, **transforme mes tâches en blocs d'agenda et me relance jusqu'à ce qu'elles soient faites**.
 
 Conçu pour tourner gratuitement sur une petite VM toujours allumée (API gratuites, 1 Go de RAM).
+
+## Architecture en un coup d'œil
+
+```mermaid
+flowchart LR
+  subgraph In[Capture]
+    TG[Telegram<br/>text and voice]
+    GM[Gmail]
+    DR[Google Drive]
+    NO[Notion deadlines]
+  end
+  In --> EX[LLM extraction<br/>tasks and events]
+  EX --> DD[Deduplication]
+  DD --> PL[Planner<br/>pure and tested]
+  PL --> GC[(Google Calendar)]
+  GC --> CO[Coach<br/>briefing, reminders, follow-up]
+  CO --> TG
+  RT[Sensitivity-aware<br/>LLM router] -.-> EX
+```
+
+## Points forts techniques
+
+- **Un planificateur pur et très testé.** `coach/planner.py` ne fait aucune E/S ; les invariants (pas de chevauchement, heures autorisées, plafond quotidien, échéances) sont vérifiés dans plus de 570 tests.
+- **Confidentialité par construction.** Chaque élément a un niveau de sensibilité, et le routeur LLM refuse d'envoyer du contenu `private` à un modèle cloud.
+- **Jamais de doublon d'événement.** Les identifiants d'événements d'agenda sont calculés de façon déterministe et chaque tâche ou rendez-vous entrant est comparé à l'existant (mails, notes, Notion, agenda).
+- **Tombe visiblement, repart seul.** Un jeton Google révoqué ne fait plus boucler le bot en redémarrages : les services sont construits à la demande, les jobs en échec déclenchent une alerte, et tout reprend dès que le jeton est remplacé.
+- **Tourne sur une VM gratuite de 1 Go** sous plafond mémoire systemd, avec des quotas d'API gratuits que le bot suit lui-même.
 
 ## Ce qu'il fait
 
