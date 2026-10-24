@@ -2,7 +2,7 @@
 
 *[Version française](README.fr.md)*
 
-![python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![interface](https://img.shields.io/badge/interface-Telegram-26A5E4?logo=telegram&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-Groq_·_Gemini_·_Ollama-8A2BE2) ![calendar](https://img.shields.io/badge/calendar-Google_Calendar-4285F4?logo=googlecalendar&logoColor=white)
+[![CI](https://github.com/figtitou-svg/second-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/figtitou-svg/second-brain/actions/workflows/ci.yml) ![License: MIT](https://img.shields.io/badge/license-MIT-green) ![python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white) ![interface](https://img.shields.io/badge/interface-Telegram-26A5E4?logo=telegram&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-Groq_·_Gemini_·_Ollama-8A2BE2) ![calendar](https://img.shields.io/badge/calendar-Google_Calendar-4285F4?logo=googlecalendar&logoColor=white)
 
 A personal "second brain" that lives in Telegram. It reads my mail, documents and voice notes, answers questions about them with sources, and — above all — **turns tasks into calendar blocks and keeps nagging me until they are done**.
 
@@ -92,3 +92,7 @@ It runs as a systemd service on a small Linux VM — see [`deploy/second-brain.s
 ## Tech
 
 Python · python-telegram-bot · APScheduler · SQLite (FTS5) · Pydantic · LiteLLM (Groq, Gemini, Ollama) · Google APIs (Gmail, Calendar, Drive, Docs) · Notion API · pytest
+
+## License
+
+[MIT](LICENSE)
