@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Callable
 
 from coach import project_watch, projects
@@ -31,24 +31,27 @@ def project_color(project_id: str | None) -> str:
 class AgendaCache:
     """Agenda Google lu au plus une fois toutes les `ttl` secondes par plage ; panne = dernière valeur connue."""
 
-    def __init__(self, fn: AgendaFn, ttl: float = 300, clock: Callable[[], float] = time.monotonic) -> None:
-        self.fn, self.ttl, self.clock = fn, ttl, clock
-        self._cache: dict[tuple[datetime, datetime], tuple[float, list]] = {}
+    def __init__(self, fn: AgendaFn, ttl: float = 300, clock: Callable[[], float] = time.monotonic,
+                 retry: float = 60) -> None:
+        self.fn, self.ttl, self.clock, self.retry = fn, ttl, clock, retry
+        self._cache: dict[tuple[datetime, datetime], tuple[float, list]] = {}   # plage -> (expire à, valeur)
         self._mutex = threading.Lock()
 
     def get(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime, str]]:
         key = (start, end)
         with self._mutex:
             hit = self._cache.get(key)
-        if hit and self.clock() - hit[0] < self.ttl:
+        if hit and self.clock() < hit[0]:
             return hit[1]
         try:
             value = list(self.fn(start, end))
+            expires = self.clock() + self.ttl
         except Exception:  # noqa: BLE001 - Google en panne : l'accueil s'affiche quand même
             log.warning("agenda Google illisible pour la page web", exc_info=True)
-            return hit[1] if hit else []
+            value = hit[1] if hit else []
+            expires = self.clock() + self.retry   # l'échec est mémorisé : pas de nouvel appel à chaque rechargement
         with self._mutex:
-            self._cache[key] = (self.clock(), value)
+            self._cache[key] = (expires, value)
         return value
 
 

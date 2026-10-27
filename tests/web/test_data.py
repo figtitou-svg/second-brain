@@ -139,3 +139,43 @@ def test_agenda_cache_calls_once_per_ttl_and_survives_errors():
 def test_agenda_cache_error_without_previous_value_gives_empty():
     cache = data.AgendaCache(lambda s, e: (_ for _ in ()).throw(RuntimeError("panne")))
     assert cache.get(dt(2026, 10, 27, 8), dt(2026, 10, 27, 22)) == []
+
+
+def _flaky_cache():
+    calls = []
+
+    def agenda(start, end):
+        calls.append(start)
+        if len(calls) >= 2:
+            raise RuntimeError("Google indisponible")
+        return [(start, end, "Cours")]
+
+    t = [0.0]
+    return data.AgendaCache(agenda, ttl=300, retry=60, clock=lambda: t[0]), calls, t
+
+
+def test_agenda_cache_failure_is_held_for_retry_delay():
+    cache, calls, t = _flaky_cache()
+    s, e = dt(2026, 10, 27, 8), dt(2026, 10, 27, 22)
+    cache.get(s, e)
+    t[0] = 301
+    assert cache.get(s, e)[0][2] == "Cours" and len(calls) == 2      # erreur
+    t[0] = 330
+    assert cache.get(s, e)[0][2] == "Cours" and len(calls) == 2      # dans la fenêtre de retry
+    t[0] = 362
+    assert cache.get(s, e)[0][2] == "Cours" and len(calls) == 3      # retry écoulé : nouvel appel
+
+
+def test_agenda_cache_error_without_value_is_held_too():
+    calls = []
+
+    def agenda(start, end):
+        calls.append(start)
+        raise RuntimeError("panne")
+
+    t = [0.0]
+    cache = data.AgendaCache(agenda, retry=60, clock=lambda: t[0])
+    s, e = dt(2026, 10, 27, 8), dt(2026, 10, 27, 22)
+    assert cache.get(s, e) == [] and cache.get(s, e) == [] and len(calls) == 1
+    t[0] = 61
+    assert cache.get(s, e) == [] and len(calls) == 2
