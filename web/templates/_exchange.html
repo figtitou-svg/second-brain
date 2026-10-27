@@ -1,0 +1,2 @@
+{% if ex %}<div class="exchange">{% if ex.said %}<p class="said">{{ ex.said }}</p>{% endif %}
+{% for r in ex.replies %}<div class="reply">{{ r.text | tg }}</div>{% endfor %}</div>{% endif %}
