@@ -257,6 +257,15 @@ def interview_cancel() -> list[tuple[str, list[list[tuple[str, str]]]]]:
     return _iv().cancel()
 
 
+def task_folders() -> list[list[tuple[str, str]]]:
+    """Boutons « dossier » de /tasks : un par projet ayant des tâches ouvertes."""
+    return project_service.task_folders(_need()[0])
+
+
+def project_tasks_view(project_id: str) -> tuple[str, list[list[tuple[str, str]]]]:
+    return project_service.open_tasks_view(_need()[0], project_id)
+
+
 def projects_overview() -> tuple[str, list[list[tuple[str, str]]]]:
     db, sched = _need()
     return project_service.overview(db, sched.now())

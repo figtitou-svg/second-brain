@@ -15,6 +15,7 @@ class FakeTask:
     status: str = "pending"
     due: object | None = None
     not_before: object | None = None
+    project_id: str | None = None
 
 
 class FakeRouter:
@@ -138,6 +139,16 @@ class FakeCoach:
     def interview_cancel(self) -> list[tuple[str, list]]:
         self.calls.append(("interview_cancel",))
         return [("🗑 Entretien annulé.", [])]
+
+    def task_folders(self) -> list:
+        return [[(f"📂 {name} ({sum(1 for t in self.list_open_tasks() if t.project_id == pid)})", f"ptk:{pid}")]
+                for pid, name in getattr(self, "folders", {}).items()
+                if any(t.project_id == pid for t in self.list_open_tasks())]
+
+    def project_tasks_view(self, project_id: str) -> tuple[str, list]:
+        open_ = [t for t in self.list_open_tasks() if t.project_id == project_id]
+        return (f"📂 {project_id} ({len(open_)})",
+                [[(f"✅ {t.title}", f"ptd:{project_id}:{t.id}")] for t in open_] + [[("⬅ Tâches", "ptl")]])
 
     def projects_overview(self) -> tuple[str, list]:
         self.calls.append(("projects_overview",))

@@ -223,6 +223,32 @@ def overview(db: Database, now: datetime) -> tuple[str, Buttons]:
     return projects.cap_lines("\n\n".join(parts).split("\n")), rows
 
 
+def task_folders(db: Database) -> Buttons:
+    """`/tasks` : un bouton « dossier » par projet qui a des tâches ouvertes (ouvre `open_tasks_view`)."""
+    rows: Buttons = []
+    for p in db.list_projects("active", "paused"):
+        n = sum(1 for t in db.list_project_tasks(p.id) if t.status in projects.OPEN)
+        if n:
+            rows.append([(f"📂 {p.name[:24]} ({n})", f"ptk:{p.id}")])
+    return rows
+
+
+def open_tasks_view(db: Database, project_id: str) -> tuple[str, Buttons]:
+    """Tâches ouvertes d'un projet, un bouton ✅ par tâche, retour vers /tasks."""
+    p = db.get_project(project_id)
+    if p is None:
+        return "❓ Projet introuvable.", []
+    open_ = [t for t in db.list_project_tasks(p.id) if t.status in projects.OPEN]
+    back = [("⬅ Tâches", "ptl")]
+    if not open_:
+        return f"📂 <b>{fmt.esc(p.name)}</b>\nPlus aucune tâche ouverte.", [back]
+    lines = [f"📂 <b>{fmt.esc(p.name)}</b> ({len(open_)})"]
+    lines += [f"{fmt.STATUS_ICON.get(t.status, '•')} {fmt.esc(t.title)} · {fmt.dur(t.estimated_minutes)}"
+              for t in open_]
+    rows: Buttons = [[(f"✅ {t.title[:30]}", f"ptd:{p.id}:{t.id}")] for t in open_]
+    return "\n".join(lines), rows + [back]
+
+
 def rank_candidates(db: Database, project_id: str) -> list[Task]:
     """Tâches ouvertes du projet qui n'ont pas encore d'étape."""
     return [t for t in db.list_project_tasks(project_id) if t.status in projects.OPEN and not t.milestone_id]

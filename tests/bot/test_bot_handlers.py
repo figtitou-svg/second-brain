@@ -93,6 +93,20 @@ def test_today_and_tasks():
     assert [cb for _, cb in card.buttons[0]] == ["td:t1", "tpo:t1", "tnw:t1", "ign:t1"]
 
 
+def test_tasks_project_tasks_go_in_a_folder():
+    svc, coach, _, _ = make([FakeTask("t1", "Libre"), FakeTask("t2", "Dans IA", project_id="p1")])
+    coach.extract_tasks("x", "s", "private")
+    coach.folders = {"p1": "IA"}
+    header, *cards = svc.tasks()
+    assert [cb for row in header.buttons for _, cb in row] == ["ptk:p1"]
+    assert len(cards) == 1 and "Libre" in cards[0].text           # la tâche du projet n'est plus listée
+    view = svc.on_callback("ptk:p1")
+    assert [cb for row in view.buttons for _, cb in row] == ["ptd:p1:t2", "ptl"]
+    back = svc.on_callback("ptd:p1:t2")                            # faite -> le dossier est réaffiché
+    assert coach.tasks["t2"].status == "done" and [cb for row in back.buttons for _, cb in row] == ["ptl"]
+    assert svc.on_callback("ptl").buttons == []
+
+
 def test_tasks_empty():
     svc, *_ = make()
     assert "Aucune" in svc.tasks()[0].text

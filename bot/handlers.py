@@ -329,7 +329,8 @@ class BotService:
             return [Reply(f"⚠️ Coach indisponible ({fmt.esc(exc)}).")]
         if not tasks:
             return [Reply("📋 Aucune tâche ouverte.")]
-        replies = [Reply(f"📋 <b>Tâches ouvertes</b> ({len(tasks)})")]
+        replies = [Reply(f"📋 <b>Tâches ouvertes</b> ({len(tasks)})", self.coach.task_folders())]
+        tasks = [t for t in tasks if not getattr(t, "project_id", None)]  # celles des projets : dans leur dossier
         for t in tasks[:MAX_TASK_CARDS]:  # une carte par tâche, avec ses boutons
             extra = (f" · le {fmt.day_short(t.due)}" if fmt.on_day(t)
                      else f" · avant {fmt.day_short(t.due)}" if getattr(t, "due", None) else "")
@@ -398,6 +399,16 @@ class BotService:
                 task_id, _, arg = rest.partition(":")
                 text, buttons = self.coach.project_pick(action, task_id, arg or None)
                 return Reply(text, buttons)
+            if action == "ptk":  # dossier d'un projet depuis /tasks
+                text, buttons = self.coach.project_tasks_view(rest)
+                return Reply(text, buttons)
+            if action == "ptd":  # tâche faite depuis un dossier : on réaffiche le dossier
+                project_id, _, task_id = rest.partition(":")
+                self.coach.mark_done(task_id)
+                text, buttons = self.coach.project_tasks_view(project_id)
+                return Reply(text, buttons)
+            if action == "ptl":  # retour à /tasks : les dossiers
+                return Reply("📋 <b>Tâches ouvertes</b>", self.coach.task_folders())
             if action in ("tpo", "tnw"):
                 return Reply(self.coach.postpone_task(rest, "tomorrow" if action == "tpo" else "next_week"))
             if action == "mv":
