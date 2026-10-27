@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +23,16 @@ RUNNING = Path("data") / "running"
 LABELS = {"gmail": "Gmail", "drive": "Drive", "notion": "Notion", "coach": "Agenda / relances",
           "llm": "Modèles IA", "bot": "Bot Telegram", "google_auth": "Autorisation Google",
           "projects": "Assistant de projet", "pwatch": "Surveillance des projets"}
+
+
+@dataclass(frozen=True)
+class ComponentState:
+    component: str
+    label: str
+    ok: bool
+    last_ok: datetime | None   # dernier succès depuis le démarrage (non conservé entre redémarrages)
+    fails: int
+    last_error: str | None
 
 
 def describe(exc: BaseException) -> tuple[str, str, int]:
@@ -52,6 +63,7 @@ class Health:
         self.cooldown = timedelta(hours=cooldown_hours)
         self._now = now_fn or (lambda: datetime.now(TZ))
         self._lock = threading.Lock()
+        self.last_ok: dict[str, datetime] = {}
         try:
             self._state: dict[str, dict] = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -62,6 +74,7 @@ class Health:
         self.path.write_text(json.dumps(self._state), encoding="utf-8")
 
     def ok(self, component: str) -> None:
+        self.last_ok[component] = self._now()
         with self._lock:
             st = self._state.pop(component, None)
             if st is None:
@@ -89,6 +102,14 @@ class Health:
         if send:
             self.notify(f"⚠️ <b>{LABELS.get(component, component)} : problème</b>\n{_html(why)}"
                         + (f"\n<i>{fails} échecs d'affilée</i>" if fails > 1 else ""), None)
+
+    def snapshot(self) -> list[ComponentState]:
+        """État de chaque composant connu, pour la section Système de la page web."""
+        with self._lock:
+            state = {k: dict(v) for k, v in self._state.items()}
+        keys = list(LABELS) + [k for k in state if k not in LABELS]
+        return [ComponentState(k, LABELS.get(k, k), k not in state, self.last_ok.get(k),
+                               state.get(k, {}).get("fails", 0), state.get(k, {}).get("last")) for k in keys]
 
 
 def _html(s: str) -> str:
