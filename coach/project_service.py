@@ -234,7 +234,7 @@ def task_folders(db: Database) -> Buttons:
 
 
 def open_tasks_view(db: Database, project_id: str) -> tuple[str, Buttons]:
-    """Tâches ouvertes d'un projet, un bouton ✅ par tâche, retour vers /tasks."""
+    """Tâches ouvertes d'un projet, boutons fait / demain / semaine pro. par tâche, retour vers /tasks."""
     p = db.get_project(project_id)
     if p is None:
         return "❓ Projet introuvable.", []
@@ -245,7 +245,8 @@ def open_tasks_view(db: Database, project_id: str) -> tuple[str, Buttons]:
     lines = [f"📂 <b>{fmt.esc(p.name)}</b> ({len(open_)})"]
     lines += [f"{fmt.STATUS_ICON.get(t.status, '•')} {fmt.esc(t.title)} · {fmt.dur(t.estimated_minutes)}"
               for t in open_]
-    rows: Buttons = [[(f"✅ {t.title[:30]}", f"ptd:{p.id}:{t.id}")] for t in open_]
+    rows: Buttons = [[(f"✅ {t.title[:24]}", f"ptd:{p.id}:{t.id}"), ("⏭", f"ptp:{p.id}:{t.id}"),
+                      ("📅", f"ptw:{p.id}:{t.id}")] for t in open_]
     return "\n".join(lines), rows + [back]
 
 

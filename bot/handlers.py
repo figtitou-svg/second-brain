@@ -402,11 +402,15 @@ class BotService:
             if action == "ptk":  # dossier d'un projet depuis /tasks
                 text, buttons = self.coach.project_tasks_view(rest)
                 return Reply(text, buttons)
-            if action == "ptd":  # tâche faite depuis un dossier : on réaffiche le dossier
+            if action in ("ptd", "ptp", "ptw"):  # fait / demain / semaine pro. depuis un dossier : on le réaffiche
                 project_id, _, task_id = rest.partition(":")
-                self.coach.mark_done(task_id)
+                if action == "ptd":
+                    note = ""
+                    self.coach.mark_done(task_id)
+                else:
+                    note = self.coach.postpone_task(task_id, "tomorrow" if action == "ptp" else "next_week") + "\n\n"
                 text, buttons = self.coach.project_tasks_view(project_id)
-                return Reply(text, buttons)
+                return Reply(note + text, buttons)
             if action == "ptl":  # retour à /tasks : les dossiers
                 return Reply("📋 <b>Tâches ouvertes</b>", self.coach.task_folders())
             if action in ("tpo", "tnw"):

@@ -148,7 +148,8 @@ class FakeCoach:
     def project_tasks_view(self, project_id: str) -> tuple[str, list]:
         open_ = [t for t in self.list_open_tasks() if t.project_id == project_id]
         return (f"📂 {project_id} ({len(open_)})",
-                [[(f"✅ {t.title}", f"ptd:{project_id}:{t.id}")] for t in open_] + [[("⬅ Tâches", "ptl")]])
+                [[(f"✅ {t.title}", f"ptd:{project_id}:{t.id}"), ("⏭", f"ptp:{project_id}:{t.id}"),
+                  ("📅", f"ptw:{project_id}:{t.id}")] for t in open_] + [[("⬅ Tâches", "ptl")]])
 
     def projects_overview(self) -> tuple[str, list]:
         self.calls.append(("projects_overview",))

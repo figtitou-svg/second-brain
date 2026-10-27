@@ -101,7 +101,12 @@ def test_tasks_project_tasks_go_in_a_folder():
     assert [cb for row in header.buttons for _, cb in row] == ["ptk:p1"]
     assert len(cards) == 1 and "Libre" in cards[0].text           # la tâche du projet n'est plus listée
     view = svc.on_callback("ptk:p1")
-    assert [cb for row in view.buttons for _, cb in row] == ["ptd:p1:t2", "ptl"]
+    assert [cb for row in view.buttons for _, cb in row] == ["ptd:p1:t2", "ptp:p1:t2", "ptw:p1:t2", "ptl"]
+    later = svc.on_callback("ptw:p1:t2")                           # reportée -> confirmation + dossier réaffiché
+    assert ("postpone_task", "t2", "next_week") in coach.calls
+    assert later.text.startswith("Reporté") and "ptd:p1:t2" in [cb for row in later.buttons for _, cb in row]
+    svc.on_callback("ptp:p1:t2")
+    assert ("postpone_task", "t2", "tomorrow") in coach.calls
     back = svc.on_callback("ptd:p1:t2")                            # faite -> le dossier est réaffiché
     assert coach.tasks["t2"].status == "done" and [cb for row in back.buttons for _, cb in row] == ["ptl"]
     assert svc.on_callback("ptl").buttons == []
