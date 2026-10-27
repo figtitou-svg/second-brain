@@ -54,7 +54,6 @@ a.item:hover{color:var(--text)}
 .big{font-size:22px;fill:var(--text);text-anchor:middle}.small{font-size:10px;fill:var(--muted);text-anchor:middle}
 .mid{font-size:13px;fill:var(--text);text-anchor:middle}.alert{fill:var(--alert)}
 .title{font-size:19px;line-height:1.2;color:var(--c);overflow-wrap:anywhere}
-@media (prefers-color-scheme: light){.title{color:var(--text)}}  /* couleurs de projet trop pâles sur fond blanc */
 .next{overflow-wrap:anywhere}
 .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .ribbon{margin-top:18px}.hours{display:flex;justify-content:space-between;font-size:12px}
@@ -80,6 +79,11 @@ a.item:hover{color:var(--text)}
 .composer{position:sticky;bottom:calc(64px + env(safe-area-inset-bottom));display:flex;gap:8px;margin-top:18px;
   padding:6px 0;background:var(--bg)}
 .composer input{flex:1;min-width:0;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);padding:0 12px}
+/* mode clair : couleurs de projet trop pâles sur fond blanc → titre en couleur du texte, graphismes assombris */
+@media (prefers-color-scheme: light){.title{color:var(--text)}
+  .seg,.legend i{filter:brightness(.78) saturate(1.15)}
+  /* filter n'agit pas de façon fiable sur un élément SVG, et assombrirait toute la tuile : on mélange la couleur */
+  .arc{stroke:color-mix(in srgb,var(--c) 78%,#000)}.focus li{border-top-color:color-mix(in srgb,var(--c) 78%,#000)}}
 /* discussion et système */
 .thread{display:flex;flex-direction:column;gap:12px;margin-top:14px}
 .exchange{display:flex;flex-direction:column;min-width:0}
@@ -99,12 +103,12 @@ a.item:hover{color:var(--text)}
 .components li,.errors li{display:flex;flex-direction:column;padding:8px 0;border-bottom:1px solid var(--line);
   overflow-wrap:anywhere;min-width:0}
 .components .ko span:first-child{color:var(--alert)}
-.toast{position:fixed;left:16px;right:16px;bottom:calc(80px + env(safe-area-inset-bottom));max-height:50vh;overflow-y:auto;
+.toast{position:fixed;left:16px;right:16px;bottom:calc(128px + env(safe-area-inset-bottom));max-height:50vh;overflow-y:auto;
   background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;z-index:50;overflow-wrap:anywhere}
 .toast .exchange .reply{border-left:0;padding:0}
-.offline{position:fixed;top:0;left:0;right:0;background:var(--alert);color:#fff;padding:8px 16px 8px 64px;z-index:60}
+/* sous le bouton ☰ sur téléphone, à droite du menu au-delà ; sous le tiroir ouvert (z-index 40) */
+.offline{position:fixed;top:64px;left:0;right:0;background:var(--alert);color:#fff;padding:8px 16px;z-index:38}
 .login{max-width:360px;margin:15vh auto;display:flex;flex-direction:column;gap:10px}
-.login h1{padding-left:0}
 .login input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);padding:0 12px}
 /* tablette : menu en icônes, 2 colonnes */
 @media (min-width:700px){
@@ -117,7 +121,7 @@ a.item:hover{color:var(--text)}
   .logout{padding:0}.logout button{justify-content:center;padding:0}
   main{margin-left:72px;padding-bottom:24px}
   main>h1,.today{padding-left:0}
-  .offline{padding-left:88px}
+  .offline{top:0;left:72px}
   .composer{bottom:0;padding-bottom:12px}
   #home{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
   #home>.today,#home>.now,#home>.ribbon,#home>.error{grid-column:1/-1}
@@ -133,7 +137,7 @@ a.item:hover{color:var(--text)}
   .nav .item{justify-content:flex-start;padding:0 10px}
   .logout{padding:0 10px}.logout button{justify-content:flex-start;padding:0 14px}
   main{margin-left:220px;padding:24px 32px}
-  .offline{padding-left:236px}
+  .offline{left:220px}
   #home{grid-template-columns:repeat(3,1fr)}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}

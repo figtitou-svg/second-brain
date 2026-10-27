@@ -28,7 +28,7 @@
       <a class="item{% if path == href %} current{% endif %}" href="{{ href }}" title="{{ label }}"{% if path == href %} aria-current="page"{% endif %}>
         <span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span></a>
       {% else %}
-      <span class="item soon" aria-disabled="true" title="{{ label }}"><span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span><small>bientôt</small></span>
+      <span class="item soon" title="{{ label }}"><span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span><small>bientôt</small></span>
       {% endif %}
     {% endfor %}
   {% endfor %}
@@ -44,8 +44,8 @@
 {% if csrf %}
 <nav class="bottom" aria-label="Raccourcis">
   <a href="/"{% if path == "/" %} aria-current="page"{% endif %}><span aria-hidden="true">🏠</span>Accueil</a>
-  <span class="soon" aria-disabled="true"><span aria-hidden="true">📅</span>Agenda<span class="sr-only"> (à venir)</span></span>
-  <span class="soon" aria-disabled="true"><span aria-hidden="true">☑️</span>Tâches<span class="sr-only"> (à venir)</span></span>
+  <span class="soon"><span aria-hidden="true">📅</span>Agenda<span class="sr-only"> (à venir)</span></span>
+  <span class="soon"><span aria-hidden="true">☑️</span>Tâches<span class="sr-only"> (à venir)</span></span>
   <a href="/discussion"{% if path == "/discussion" %} aria-current="page"{% endif %}><span aria-hidden="true">💬</span>Discussion</a>
 </nav>
 {% endif %}
