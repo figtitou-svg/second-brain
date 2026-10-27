@@ -1,2 +1,35 @@
 {% extends "base.html" %}
-{% block main %}<p>Système</p>{% endblock %}
+{% block title %}Système · Second Brain{% endblock %}
+{% block main %}
+<h1>Système</h1>
+{% set m = sys.machine %}
+<section class="card"><h2>Serveur</h2>
+  {% if m.mem_total_mb and m.mem_used_mb is not none %}
+  <div class="meter"><span>Mémoire</span><span>{{ m.mem_used_mb }} / {{ m.mem_total_mb }} Mo</span>
+    <div class="gauge" aria-hidden="true"><i style="width: {{ [m.mem_used_mb * 100 // m.mem_total_mb, 100]|min }}%"></i></div></div>
+  {% endif %}
+  <div class="meter"><span>Disque</span><span>{{ m.disk_used_gb }} / {{ m.disk_total_gb }} Go</span>
+    {% if m.disk_total_gb %}<div class="gauge" aria-hidden="true"><i style="width: {{ [(m.disk_used_gb * 100 / m.disk_total_gb)|round|int, 100]|min }}%"></i></div>{% endif %}</div>
+  <dl class="facts">
+    {% if m.load1 is not none %}<dt>Charge</dt><dd>{{ m.load1 }}</dd>{% endif %}
+    {% if m.swap_total_mb and m.swap_used_mb is not none %}<dt>Swap</dt><dd>{{ m.swap_used_mb }} / {{ m.swap_total_mb }} Mo</dd>{% endif %}
+    {% if m.bot_rss_mb is not none %}<dt>Mémoire du bot</dt><dd>{{ m.bot_rss_mb }} Mo</dd>{% endif %}
+    {% if m.uptime_s is not none %}<dt>Serveur allumé depuis</dt><dd>{{ m.uptime_s // 86400 }} j {{ (m.uptime_s % 86400) // 3600 }} h</dd>{% endif %}
+    <dt>Bot démarré depuis</dt><dd>{{ m.bot_uptime_s // 3600 }} h {{ (m.bot_uptime_s % 3600) // 60 }} min</dd>
+  </dl>
+</section>
+<section class="card"><h2>Synchros et services</h2>
+  {% if sys.components %}
+  <ul class="components">{% for c in sys.components %}
+    <li class="{{ 'ok' if c.ok else 'ko' }}"><span>{{ "✅" if c.ok else "❌" }} {{ c.label }}</span>
+      <span class="muted">{% if not c.ok %}en panne ({{ c.fails }} échecs){% if c.last_error %} : {{ c.last_error }}{% endif %}{% elif c.last_ok %}OK à {{ c.last_ok.strftime("%Hh%M") }}{% else %}pas encore lancé{% endif %}</span></li>
+  {% endfor %}</ul>
+  {% else %}<p class="muted">Aucun composant suivi pour l'instant.</p>{% endif %}
+</section>
+<section class="card"><h2>Quotas IA du jour</h2><div class="reply">{{ sys.quota | tg }}</div></section>
+<section class="card"><h2>Erreurs récentes</h2>
+  {% if sys.errors %}<ul class="errors">{% for e in sys.errors %}
+    <li><span>{{ e.message }}</span><span class="muted">{{ e.logger }} · {{ e.count }} fois</span></li>{% endfor %}</ul>
+  {% else %}<p class="muted">Aucune erreur depuis le démarrage.</p>{% endif %}
+</section>
+{% endblock %}

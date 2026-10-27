@@ -1,2 +1,10 @@
-{% if ex %}<div class="exchange">{% if ex.said %}<p class="said">{{ ex.said }}</p>{% endif %}
-{% for r in ex.replies %}<div class="reply">{{ r.text | tg }}</div>{% endfor %}</div>{% endif %}
+{% if ex %}
+<div class="exchange">
+  {% if ex.said %}<p class="said">{{ ex.said }}</p>{% endif %}
+  {% for r in ex.replies %}
+  <div class="reply">{{ r.text | tg }}
+    {% if r.buttons %}<div class="actions">{% for row in r.buttons %}{% for label, cb in row %}<button type="button" data-cb="{{ cb }}">{{ label }}</button>{% endfor %}{% endfor %}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

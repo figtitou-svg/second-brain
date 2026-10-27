@@ -1,13 +1,54 @@
 <!doctype html>
 <html lang="fr">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="csrf" content="{{ csrf }}">
+<meta name="color-scheme" content="dark light">
 <title>{% block title %}Second Brain{% endblock %}</title>
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<main>{% block main %}{% endblock %}</main>
+{% set sections = [
+  (None, [("Accueil", "🏠", "/")]),
+  ("Organisation", [("Agenda", "📅", None), ("Focus", "🎯", None), ("Tâches", "☑️", None),
+                    ("Projets", "🍩", None), ("Récap semaine", "📊", None)]),
+  ("À traiter", [("À trier", "📥", None), ("Suggestions", "💡", None), ("Notifications", "🔔", None)]),
+  ("Mémoire", [("Discussion", "💬", "/discussion"), ("Notes et documents", "🗒️", None)]),
+  ("Coulisses", [("Système", "🖥️", "/systeme")]),
+] %}
+{% if csrf %}
+<button class="menu-toggle" type="button" aria-controls="nav" aria-expanded="false" aria-label="Ouvrir le menu">☰</button>
+<nav id="nav" class="nav" aria-label="Sections">
+  <div class="brand">Second Brain</div>
+  {% for group, items in sections %}
+    {% if group %}<div class="group">{{ group }}</div>{% endif %}
+    {% for label, icon, href in items %}
+      {% if href %}
+      <a class="item{% if path == href %} current{% endif %}" href="{{ href }}" title="{{ label }}"{% if path == href %} aria-current="page"{% endif %}>
+        <span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span></a>
+      {% else %}
+      <span class="item soon" aria-disabled="true" title="{{ label }}"><span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span><small>bientôt</small></span>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+  <form method="post" action="/logout" class="logout" data-post>
+    <button type="submit" title="Se déconnecter"><span class="icon" aria-hidden="true">⏻</span><span class="label">Se déconnecter</span></button>
+  </form>
+</nav>
+<div class="scrim" hidden></div>
+{% endif %}
+<main id="main">{% block main %}{% endblock %}</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="offline" class="offline" role="alert" hidden>La page ne joint plus le serveur. Les infos affichées peuvent dater.</div>
+{% if csrf %}
+<nav class="bottom" aria-label="Raccourcis">
+  <a href="/"{% if path == "/" %} aria-current="page"{% endif %}><span aria-hidden="true">🏠</span>Accueil</a>
+  <span class="soon" aria-disabled="true"><span aria-hidden="true">📅</span>Agenda<span class="sr-only"> (à venir)</span></span>
+  <span class="soon" aria-disabled="true"><span aria-hidden="true">☑️</span>Tâches<span class="sr-only"> (à venir)</span></span>
+  <a href="/discussion"{% if path == "/discussion" %} aria-current="page"{% endif %}><span aria-hidden="true">💬</span>Discussion</a>
+</nav>
+{% endif %}
 <script src="/static/app.js" defer></script>
 </body>
 </html>

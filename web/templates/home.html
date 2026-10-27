@@ -1,2 +1,9 @@
 {% extends "base.html" %}
-{% block main %}<section id="home" data-refresh="/fragment/home">{% include "_home_body.html" %}</section>{% endblock %}
+{% block main %}
+<section id="home" data-refresh="/fragment/home">{% include "_home_body.html" %}</section>
+<form class="composer" data-say-form>
+  <label class="sr-only" for="say">Note, question ou /commande</label>
+  <input id="say" name="text" placeholder="Note, question ou /commande" autocomplete="off">
+  <button type="submit">Envoyer</button>
+</form>
+{% endblock %}

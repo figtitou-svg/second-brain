@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 import urllib.request
+from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
 from bot.fakes import FakeCoach, FakeMemory, FakeRouter, FakeTask
 from bot.handlers import BotService, Reply
+from coach.models import Block, Project, Task
 from coach.calendar_client import FakeCalendarClient
 from coach.db import Database
 from coach.rules import load_rules
@@ -218,3 +222,92 @@ def test_start_serves_login(tmp_path):
     assert thread is not None and thread.daemon
     with urllib.request.urlopen(f"http://127.0.0.1:{thread.port}/login", timeout=5) as r:
         assert r.status == 200
+
+
+def test_no_external_resources_in_templates_and_css():
+    root = Path(server.HERE)
+    for f in list((root / "templates").glob("*.html")) + [root / "static" / "app.css", root / "static" / "app.js"]:
+        text = f.read_text(encoding="utf-8")
+        assert not re.search(r"(src|href)=\"https?://", text), f
+        assert "@import" not in text and "url(http" not in text and "//fonts." not in text, f
+
+
+def test_menu_lists_all_sections_with_future_ones_disabled():
+    app, _ = make_app()
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/")).text()
+        for name in ("Accueil", "Agenda", "Focus", "Tâches", "Projets", "Récap semaine", "À trier", "Suggestions",
+                     "Notifications", "Discussion", "Notes et documents", "Système"):
+            assert name in page, name
+        assert page.count("bientôt") == 9          # les 9 sections sans lien du menu latéral
+        assert 'href="/discussion"' in page and 'href="/systeme"' in page
+    run(app, scenario)
+
+
+def test_home_shows_now_ring_with_block_buttons():
+    db = Database(":memory:")
+    cal = FakeCalendarClient()
+    sched = CoachScheduler(db, cal, load_rules(FROZEN), lambda t, b=None: None, lambda: NOW)
+    p = Project(name="Projet IA")
+    db.save_project(p)
+    t = Task(title="[IA] Entraîner le modèle", project_id=p.id, status="scheduled")
+    db.upsert_task(t)
+    b = Block(task_id=t.id, start=dt(2026, 10, 27, 9, 30), end=dt(2026, 10, 27, 11, 19))
+    db.add_block(b)
+    app, _ = make_app(home_fn=lambda: data.build_home(db, sched, data.AgendaCache(cal.agenda), NOW))
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/")).text()
+        assert "Entraîner le modèle" in page and ">52<" in page   # <text … data-countdown>52</text>
+        assert f'data-cb="ok:{b.id}"' in page and f'data-cb="rep:{b.id}"' in page
+        assert f'data-cb="pjv:{p.id}"' in page
+        assert data.project_color(p.id) in page
+        frag = await (await c.get("/fragment/home")).text()
+        assert ">52<" in frag and "<nav" not in frag            # le fragment ne contient que le corps
+    run(app, scenario)
+
+
+def test_home_empty_state_offers_replan():
+    app, _ = make_app()
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/")).text()
+        assert "Rien de prévu pour l'instant" in page and 'data-say="/replan"' in page
+    run(app, scenario)
+
+
+def test_system_page_shows_machine_components_and_errors():
+    import health
+    s = BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42)
+    errors = system.ErrorLog()
+    errors.handle(logging.makeLogRecord(
+        {"name": "telegram", "levelno": 40, "levelname": "ERROR", "msg": "Conflict: terminated"}))
+    deps = server.Deps(s, lambda: None, lambda: system.machine(), errors,
+                       lambda: [health.ComponentState("gmail", "Gmail", False, None, 3, "délai dépassé")],
+                       lambda: "📊 <b>Groq</b> 312/1000")
+    app = server.create_app(deps, PASSWORD, "0" * 64, clock=lambda: 1_800_000_000.0)
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/systeme")).text()
+        assert "Gmail" in page and "délai dépassé" in page and "Conflict: terminated" in page
+        assert "<b>Groq</b>" in page and "Disque" in page
+    run(app, scenario)
+
+
+def test_discussion_lists_command_shortcuts_and_reply_buttons():
+    s = BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42)
+    s.focus = lambda: [Reply("🎯 Tes priorités", [[("Fait", "td:t1")]])]
+    app, _ = make_app(svc=s)
+
+    async def scenario(c):
+        await login(c)
+        token = await csrf_of(c)
+        await c.post("/say", data={"text": "/focus"}, headers={"X-CSRF": token})
+        page = await (await c.get("/discussion")).text()
+        assert 'data-say="/replan"' in page and 'data-cb="td:t1"' in page
+    run(app, scenario)
