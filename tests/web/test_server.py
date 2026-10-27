@@ -89,6 +89,40 @@ def test_wrong_password_then_lockout():
     run(app, scenario)
 
 
+def test_lockout_holds_against_slow_concurrent_bodies():
+    app, _ = make_app()
+
+    async def go():
+        async with TestServer(app) as srv:
+            async def open_slow(password):
+                body = f"password={password}".encode()
+                reader, writer = await asyncio.open_connection(srv.host, srv.port)
+                writer.write(b"POST /login HTTP/1.1\r\nHost: %s:%d\r\n"
+                             b"Content-Type: application/x-www-form-urlencoded\r\n"
+                             b"Content-Length: %d\r\nConnection: close\r\n\r\n"
+                             % (srv.host.encode(), srv.port, len(body)) + body[:3])
+                await writer.drain()
+                return reader, writer, body[3:]
+
+            async def finish(conn):
+                reader, writer, rest = conn
+                writer.write(rest)
+                await writer.drain()
+                raw = await reader.read()
+                writer.close()
+                return int(raw.split(b" ", 2)[1])
+
+            slow = [await open_slow("faux") for _ in range(8)]
+            await asyncio.sleep(0.05)                # le serveur a reçu tous les en-têtes
+            statuses = await asyncio.gather(*(finish(c) for c in slow))
+            right = await finish(await open_slow(PASSWORD))
+            return statuses, right
+
+    statuses, right = asyncio.run(go())
+    assert statuses.count(200) <= 5 and statuses.count(429) == 8 - statuses.count(200)
+    assert right == 429
+
+
 def test_tampered_or_expired_cookie_is_refused():
     t = [1_800_000_000.0]
     app, _ = make_app(clock=lambda: t[0])

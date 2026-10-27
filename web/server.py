@@ -125,11 +125,13 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         return page("login.html", request)
 
     async def login(request: web.Request) -> web.Response:
+        form = await request.post()
+        # aucun `await` entre la vérification du blocage et l'enregistrement de l'échec : une requête dont le
+        # corps arrive lentement ne peut pas passer le contrôle avant que les échecs concurrents soient comptés
         wait = locked()
         if wait:
             return page("login.html", request, status=429,
                         error=f"Trop d'essais. Réessaie dans {int(wait // 60) + 1} min.")
-        form = await request.post()
         if not _same(str(form.get("password", "")), password):
             fails.append(clock())
             log.warning("page web : mot de passe incorrect")
