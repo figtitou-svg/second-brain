@@ -8,9 +8,10 @@
 <article class="now" style="--c: {{ c.color }}">
   {% set total = c.total_minutes if c.current else 60 %}
   {% set frac = (c.minutes_left / total) if total else 0 %}
-  <svg class="ring" viewBox="0 0 74 74" role="img" aria-label="{{ c.minutes_left }} minutes {{ 'restantes' if c.current else 'avant le début' }}">
+  {% set what = 'restantes' if c.current else 'avant le début' %}
+  <svg class="ring" viewBox="0 0 74 74" role="img" aria-label="{{ c.minutes_left }} minutes {{ what }}" data-total="{{ total }}" data-what="{{ what }}">
     <circle cx="37" cy="37" r="31" class="track"/>
-    <circle cx="37" cy="37" r="31" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ (100 - ([frac, 1]|min) * 100)|round(1) }}"/>
+    {% if c.minutes_left > 0 %}<circle cx="37" cy="37" r="31" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ (100 - ([frac, 1]|min) * 100)|round(1) }}"/>{% endif %}
     <text x="37" y="40" class="big" aria-hidden="true" data-countdown>{{ c.minutes_left }}</text>
     <text x="37" y="54" class="small" aria-hidden="true">min</text>
   </svg>
@@ -49,7 +50,7 @@
     {% if r.alert %}{% set when = "à relancer" %}{% elif r.days_left is none %}{% set when = "sans échéance" %}{% elif r.days_left < 0 %}{% set when = "échéance passée" %}{% else %}{% set when = "J-" ~ r.days_left %}{% endif %}
     <button type="button" class="pring" data-cb="pjv:{{ r.project_id }}" style="--c: {{ r.color }}" aria-label="{{ r.name }}, {{ r.percent }} %, {{ when }}">
       <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="track"/>
-        <circle cx="32" cy="32" r="26" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - r.percent }}"/>
+        {% if r.percent > 0 %}<circle cx="32" cy="32" r="26" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - r.percent }}"/>{% endif %}
         <text x="32" y="37" class="mid">{{ r.percent }}%</text>
         {% if r.alert %}<circle cx="54" cy="10" r="6" class="alert"/>{% endif %}</svg>
       <span class="pname">{{ r.name }}</span>

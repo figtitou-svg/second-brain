@@ -21,8 +21,9 @@
 <section class="card"><h2>Synchros et services</h2>
   {% if sys.components %}
   <ul class="components">{% for c in sys.components %}
-    <li class="{{ 'ok' if c.ok else 'ko' }}"><span>{{ "✅" if c.ok else "❌" }} {{ c.label }}</span>
-      <span class="muted">{% if not c.ok %}en panne ({{ c.fails }} échecs){% if c.last_error %} : {{ c.last_error }}{% endif %}{% elif c.last_ok %}OK à {{ c.last_ok.strftime("%Hh%M") }}{% else %}pas encore lancé{% endif %}</span></li>
+    {% set state = "ko" if not c.ok else ("ok" if c.last_ok else "idle") %}
+    <li class="{{ state }}"><span><span aria-hidden="true">{{ {"ko": "❌", "ok": "✅", "idle": "⚪"}[state] }}</span> {{ c.label }}</span>
+      <span class="muted">{% if not c.ok %}en panne ({{ c.fails }} {{ "échec" if c.fails == 1 else "échecs" }}){% if c.last_error %} : {{ c.last_error }}{% endif %}{% elif c.last_ok %}OK à {{ c.last_ok.strftime("%Hh%M") }}{% else %}pas encore lancé{% endif %}</span></li>
   {% endfor %}</ul>
   {% else %}<p class="muted">Aucun composant suivi pour l'instant.</p>{% endif %}
 </section>

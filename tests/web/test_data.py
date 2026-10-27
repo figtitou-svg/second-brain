@@ -27,6 +27,39 @@ def test_project_color_is_stable_and_in_palette():
     assert len({data.project_color(f"p{i}") for i in range(40)}) > 1
 
 
+def test_project_colors_distinct_for_eight_and_stable_when_one_is_done():
+    db, sched, cache = env()
+    ps = [Project(name=f"P{i}", created_at=NOW - timedelta(days=10 - i)) for i in range(8)]
+    for p in ps:
+        db.save_project(p)
+    colors = data.project_colors(db)
+    assert len(set(colors.values())) == 8 and set(colors.values()) == set(data.PALETTE)
+    ps[2].status = "done"
+    db.save_project(ps[2])
+    assert data.project_colors(db) == colors
+    rings = {r.project_id: r.color for r in data.build_home(db, sched, cache, NOW).rings}
+    assert ps[2].id not in rings and all(rings[p.id] == colors[p.id] for p in ps if p is not ps[2])
+
+
+def test_project_colors_ninth_project_wraps_around():
+    db, _, _ = env()
+    ps = [Project(name=f"P{i}", created_at=NOW - timedelta(days=10 - i)) for i in range(9)]
+    for p in ps:
+        db.save_project(p)
+    colors = data.project_colors(db)
+    assert colors[ps[8].id] == data.PALETTE[0] == colors[ps[0].id]
+
+
+def test_task_without_project_gets_no_project_color():
+    db, sched, cache = env()
+    db.save_project(Project(name="Projet IA"))
+    t = Task(title="Sans projet", status="scheduled")
+    db.upsert_task(t)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 27, 9, 30), end=dt(2026, 10, 27, 11)))
+    home = data.build_home(db, sched, cache, NOW)
+    assert home.now_card.color == data.NO_PROJECT and [s.color for s in home.segments] == [data.NO_PROJECT]
+
+
 def test_home_empty_db():
     db, sched, cache = env()
     home = data.build_home(db, sched, cache, NOW)
@@ -47,7 +80,7 @@ def test_now_card_current_block_and_next():
     db.add_block(Block(task_id=b.id, start=dt(2026, 10, 27, 14), end=dt(2026, 10, 27, 14, 40)))
     card = data.build_home(db, sched, cache, NOW).now_card
     assert card.current and card.title == "[IA] Entraîner le modèle" and card.minutes_left == 52
-    assert card.color == data.project_color(p.id)
+    assert card.color == data.project_colors(db)[p.id]
     assert card.next_title == "Relire le rapport" and card.next_start == dt(2026, 10, 27, 14)
 
 
@@ -115,7 +148,7 @@ def test_focus_top_three_with_colors():
         db.upsert_task(Task(title=f"T{i}", project_id=p.id if i == 0 else None, due=NOW + timedelta(days=i + 1)))
     focus = data.build_home(db, sched, cache, NOW).focus
     assert [f.rank for f in focus] == [1, 2, 3]
-    assert {f.color for f in focus} <= {data.project_color(p.id), data.NO_PROJECT}
+    assert {f.color for f in focus} == {data.project_colors(db)[p.id], data.NO_PROJECT}
 
 
 def test_agenda_cache_calls_once_per_ttl_and_survives_errors():

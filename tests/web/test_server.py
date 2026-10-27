@@ -264,7 +264,7 @@ def test_home_shows_now_ring_with_block_buttons():
         assert "Entraîner le modèle" in page and ">52<" in page   # <text … data-countdown>52</text>
         assert f'data-cb="ok:{b.id}"' in page and f'data-cb="rep:{b.id}"' in page
         assert f'data-cb="pjv:{p.id}"' in page
-        assert data.project_color(p.id) in page
+        assert data.project_colors(db)[p.id] in page
         frag = await (await c.get("/fragment/home")).text()
         assert ">52<" in frag and "<nav" not in frag            # le fragment ne contient que le corps
     run(app, scenario)
@@ -310,4 +310,41 @@ def test_discussion_lists_command_shortcuts_and_reply_buttons():
         await c.post("/say", data={"text": "/focus"}, headers={"X-CSRF": token})
         page = await (await c.get("/discussion")).text()
         assert 'data-say="/replan"' in page and 'data-cb="td:t1"' in page
+    run(app, scenario)
+
+
+def test_zero_progress_ring_draws_no_arc():
+    rings = [data.Ring("p0", "Recherche", "#3CC7A6", 0, None, False, None),
+             data.Ring("p3", "Projet IA", "#9B8CFF", 33, 10, False, None)]
+    home = data.Home(NOW, NOW, NOW, 50.0, None, [], [], rings, data.Counters(0, 0, 0))
+    app, _ = make_app(home_fn=lambda: home)
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/")).text()
+        zero = page.split('data-cb="pjv:p0"')[1].split("</button>")[0]
+        third = page.split('data-cb="pjv:p3"')[1].split("</button>")[0]
+        assert 'class="arc"' not in zero and 'class="arc"' in third and 'stroke-dashoffset="67"' in third
+    run(app, scenario)
+
+
+def test_system_component_states_are_honest():
+    import health
+    s = BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42)
+    states = [health.ComponentState("drive", "Drive", True, None, 0, None),
+              health.ComponentState("cal", "Agenda", True, NOW, 0, None),
+              health.ComponentState("gmail", "Gmail", False, None, 1, "délai dépassé"),
+              health.ComponentState("groq", "Groq", False, None, 3, None)]
+    deps = server.Deps(s, lambda: None, lambda: system.machine(), system.ErrorLog(), lambda: states, lambda: "")
+    app = server.create_app(deps, PASSWORD, "0" * 64, clock=lambda: 1_800_000_000.0)
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/systeme")).text()
+        items = {li.split("</span> ")[1].split("</span>")[0]: li
+                 for li in page.split('<ul class="components">')[1].split("</ul>")[0].split("<li ")[1:]}
+        assert "⚪" in items["Drive"] and "✅" not in items["Drive"] and "pas encore lancé" in items["Drive"]
+        assert "✅" in items["Agenda"] and "OK à" in items["Agenda"]
+        assert "❌" in items["Gmail"] and "(1 échec)" in items["Gmail"] and "délai dépassé" in items["Gmail"]
+        assert "❌" in items["Groq"] and "(3 échecs)" in items["Groq"] and "None" not in items["Groq"]
     run(app, scenario)

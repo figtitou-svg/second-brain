@@ -28,6 +28,19 @@ def project_color(project_id: str | None) -> str:
     return PALETTE[int(hashlib.sha1(project_id.encode()).hexdigest(), 16) % len(PALETTE)]
 
 
+def project_colors(db: Database) -> dict[str, str]:
+    """Une couleur fixe par projet : rang de création parmi TOUS les projets (tout statut), donc distincte pour
+    les 8 premiers et inchangée quand un autre projet est terminé ; au-delà, la palette recommence."""
+    ranked = sorted(db.list_projects(), key=lambda p: (p.created_at, p.id))
+    return {p.id: PALETTE[i % len(PALETTE)] for i, p in enumerate(ranked)}
+
+
+def _color(colors: dict[str, str], project_id: str | None) -> str:
+    if not project_id:
+        return NO_PROJECT
+    return colors.get(project_id) or project_color(project_id)
+
+
 class AgendaCache:
     """Agenda Google lu au plus une fois toutes les `ttl` secondes par plage ; panne = dernière valeur connue."""
 
@@ -141,12 +154,13 @@ def _segment(kind: str, title: str, color: str, s: datetime, e: datetime, ws: da
 def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
     ws, we = day_window(sched, now)
     tasks = {t.id: t for t in db.list_tasks()}
+    colors = project_colors(db)
     blocks = sorted((b for b in db.list_blocks() if b.outcome in (None, "done") and b.task_id in tasks),
                     key=lambda b: b.start)
     segments: list[Segment] = []
     for b in blocks:
         t = tasks[b.task_id]
-        seg = _segment("block", t.title, project_color(t.project_id), b.start, b.end, ws, we)
+        seg = _segment("block", t.title, _color(colors, t.project_id), b.start, b.end, ws, we)
         if seg:
             segments.append(seg)
     for e in db.list_events("added"):
@@ -166,11 +180,11 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         t = tasks[cur.task_id]
         current = cur.start <= now
         left = (cur.end - now) if current else (cur.start - now)
-        now_card = NowCard(current, t.title, project_color(t.project_id), cur.start, cur.end,
+        now_card = NowCard(current, t.title, _color(colors, t.project_id), cur.start, cur.end,
                            max(0, int(left.total_seconds() // 60)), int((cur.end - cur.start).total_seconds() // 60),
                            cur.id, tasks[nxt.task_id].title if nxt else None, nxt.start if nxt else None)
 
-    focus = [FocusTile(i, r.task.title, project_color(r.task.project_id), r.task.id)
+    focus = [FocusTile(i, r.task.title, _color(colors, r.task.project_id), r.task.id)
              for i, r in enumerate(sched.ranking(now)[:3], 1)]
 
     rings: list[Ring] = []
@@ -183,7 +197,7 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         else:
             pct = prog.tasks_done * 100 // prog.tasks_total if prog.tasks_total else 0
         stall = project_watch.assess(p, ms, ptasks, now)
-        rings.append(Ring(p.id, p.name, project_color(p.id), pct, prog.days_left, stall is not None,
+        rings.append(Ring(p.id, p.name, _color(colors, p.id), pct, prog.days_left, stall is not None,
                           stall.signals[0].line if stall else None))
         suggestions += sum(1 for s in db.list_project_suggestions(p.id) if s.state == "proposed")
 
