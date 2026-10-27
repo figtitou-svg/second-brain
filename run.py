@@ -20,12 +20,15 @@ load_dotenv()
 import health  # noqa: E402
 import journal  # noqa: E402
 import quota  # noqa: E402
+from bot.handlers import BotService  # noqa: E402
 from bot.main import build_application, load_config  # noqa: E402
+from bot.ports import CoachAdapter, MemoryAdapter, RouterAdapter  # noqa: E402
 from coach import fmt, focus, store  # noqa: E402
 from coach.calendar_client import GoogleCalendarClient  # noqa: E402
 from coach.db import Database  # noqa: E402
 from coach.rules import load_rules  # noqa: E402
 from coach.scheduler import CoachScheduler  # noqa: E402
+from web import data as web_data, server as web_server, system as web_system  # noqa: E402
 
 log = logging.getLogger("run")
 
@@ -58,6 +61,28 @@ def _tr(cb: str) -> str:
     return f"{_CB.get(action, action)}:{rest}"
 
 
+def web_deps(service: BotService, db: Database, sched: CoachScheduler, hl: health.Health,
+             errors: web_system.ErrorLog) -> web_server.Deps:
+    """Ce que lit la page web : le même service, la même base et le même planificateur que le bot."""
+    agenda = web_data.AgendaCache(sched.calendar.agenda)
+    return web_server.Deps(
+        svc=service,
+        home=lambda: web_data.build_home(db, sched, agenda, sched.now()),
+        machine=web_system.machine,
+        errors=errors,
+        components=hl.snapshot,
+        quota=quota.report)
+
+
+def start_web(deps: web_server.Deps | None):
+    """La page web ne doit jamais empêcher le bot de démarrer."""
+    try:
+        return web_server.start(deps)
+    except Exception:  # noqa: BLE001
+        log.exception("page web : démarrage impossible, le bot continue sans elle")
+        return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-gmail", action="store_true")
@@ -65,6 +90,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     for noisy in ("httpx", "httpcore"):  # leurs URLs contiennent le token Telegram
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    errors = web_system.ErrorLog()          # erreurs récentes, affichées dans la section Système
+    logging.getLogger().addHandler(errors)
 
     cfg = load_config()
     notify = _telegram_notify(cfg.token, cfg.allowed_user_id)
@@ -121,8 +148,14 @@ def main() -> None:
             db, notion, notify, lambda tid: store.mark_done(tid), task_buttons, sched)), 15)
 
     bg.start()
+    # un seul BotService : Telegram et la page web font exactement la même chose
+    service = BotService(CoachAdapter(), MemoryAdapter(), RouterAdapter(), cfg.allowed_user_id, journal=journal.add)
+    try:
+        start_web(web_deps(service, db, sched, hl, errors))
+    except Exception:  # noqa: BLE001 - même la construction des dépendances ne doit pas bloquer le bot
+        log.exception("page web : préparation impossible, le bot continue sans elle")
     asyncio.set_event_loop(asyncio.new_event_loop())  # Python 3.14 : plus de boucle implicite
-    build_application(cfg).run_polling()
+    build_application(cfg, service).run_polling()
     health.clean_exit()  # arrêt normal (systemctl stop/restart) : pas d'alerte au prochain démarrage
 
 

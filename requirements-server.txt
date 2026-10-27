@@ -10,3 +10,5 @@ google-api-python-client>=2.100
 google-auth>=2.23
 google-auth-oauthlib>=1.1
 pypdf>=4.0
+aiohttp>=3.9          # page web (déjà installé via litellm ; listé explicitement)
+Jinja2>=3.1
