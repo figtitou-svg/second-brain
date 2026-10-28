@@ -1,3 +1,22 @@
-{# gabarit minimal (Task 4) : barres, compteurs, retards et échéances complets en Task 5 #}
-{% if week.rows %}<ul>{% for r in week.rows %}<li style="--c: {{ r.color }}">{{ r.name }} : {{ r.minutes }} min</li>{% endfor %}</ul>
-{% else %}<p class="muted">Aucun bloc terminé ces 7 derniers jours.</p>{% endif %}
+{# Récap semaine : temps passé par projet sur les 7 derniers jours, tâches terminées, retards et échéances à venir. #}
+{% macro due_list(items, cls) %}<ul class="duelist{% if cls %} {{ cls }}{% endif %}">{% for t in items %}
+  <li><span class="name">{{ t.title }}</span><span class="when">{{ t.due|fr_day_short }} · {{ t.due|hm }}</span></li>{% endfor %}</ul>{% endmacro %}
+<div class="recap">
+  <section class="card recap-time" aria-labelledby="time-h"><h2 id="time-h">Temps passé par projet</h2>
+    {% if week.rows %}
+    <ul class="bars">{% for r in week.rows %}
+      <li style="--c: {{ r.color }}"><span class="name">{{ r.name }}</span><span class="val">{{ r.minutes|dur }}</span>
+        <span class="lane" aria-hidden="true"><span class="fill" style="width: {{ r.percent }}%"></span></span></li>{% endfor %}
+    </ul>
+    <p class="total"><span>Total</span><b>{{ week.total_minutes|dur }}</b></p>
+    {% else %}<p class="muted">Aucun bloc terminé ces 7 derniers jours.</p>{% endif %}
+    {% set n, m = week.finished_tasks, week.worked_tasks %}
+    {% if m %}<p class="muted">{{ n }} {{ "tâche terminée" if n <= 1 else "tâches terminées" }} sur {{ m }} {{ "travaillée" if m <= 1 else "travaillées" }}</p>{% endif %}
+  </section>
+  <section class="card" aria-labelledby="late-h"><h2 id="late-h">En retard{% if week.late %} <span class="alert-text">({{ week.late|length }})</span>{% endif %}</h2>
+    {% if week.late %}{{ due_list(week.late, "late") }}{% else %}<p class="muted">Aucun retard.</p>{% endif %}
+  </section>
+  <section class="card" aria-labelledby="next-h"><h2 id="next-h">Échéances des 7 prochains jours</h2>
+    {% if week.upcoming %}{{ due_list(week.upcoming, "") }}{% else %}<p class="muted">Aucune échéance d'ici une semaine.</p>{% endif %}
+  </section>
+</div>

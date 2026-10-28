@@ -1,22 +1,95 @@
-{# gabarit minimal (Task 4) : la frise et la vue semaine complètes arrivent en Task 5 #}
-{% set jours = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."] %}
-{% macro item(it) %}<li style="--c: {{ it.color }}">{{ it.start.strftime("%Hh%M") }}–{{ it.end.strftime("%Hh%M") }} {{ it.title }}
-  {% if it.block_id %}<span class="actions"><button type="button" data-cb="ok:{{ it.block_id }}">✅ Fait</button><button type="button" data-cb="rep:{{ it.block_id }}">⏭ Reporter</button></span>{% endif %}</li>{% endmacro %}
-{% if agenda.vue == "semaine" %}
-<nav class="daynav" aria-label="Semaines">
-  <a href="/agenda?vue=semaine&amp;jour={{ (agenda.monday - timedelta(days=7)).isoformat() }}">← Semaine précédente</a>
-  <a href="/agenda?vue=semaine&amp;jour={{ (agenda.monday + timedelta(days=7)).isoformat() }}">Semaine suivante →</a>
-</nav>
-{% for d in agenda.days %}
-<h2>{{ jours[d.day.weekday()] }} {{ d.day.day }}</h2>
-<ul>{% for it in d.items %}{{ item(it) }}{% endfor %}</ul>
-{% endfor %}
+{# Agenda : vue jour (frise verticale + liste) ou vue semaine (7 colonnes). Couleurs et positions viennent des données internes. #}
+{% set KIND = {"block": "Bloc", "course": "Cours", "event": "Rendez-vous"} %}
+{% set semaine = agenda.vue == "semaine" %}
+{% set prev = (agenda.monday - timedelta(days=7)) if semaine else (agenda.day - timedelta(days=1)) %}
+{% set next = (agenda.monday + timedelta(days=7)) if semaine else (agenda.day + timedelta(days=1)) %}
+{% set q = "vue=semaine&jour=" if semaine else "jour=" %}
+<div class="agenda-head">
+  <nav class="daynav" aria-label="{{ 'Semaines' if semaine else 'Jours' }}">
+    <a class="arrow" href="/agenda?{{ q }}{{ prev.isoformat() }}" aria-label="{{ 'Semaine précédente' if semaine else 'Jour précédent' }}">←</a>
+    {% if semaine %}
+    <h2 class="dayname">{{ agenda.monday|fr_day_short }} – {{ (agenda.monday + timedelta(days=6))|fr_day_short }}</h2>
+    {% else %}
+    <h2 class="dayname">{{ agenda.day|fr_day }}</h2>
+    {% endif %}
+    <a class="arrow" href="/agenda?{{ q }}{{ next.isoformat() }}" aria-label="{{ 'Semaine suivante' if semaine else 'Jour suivant' }}">→</a>
+  </nav>
+  <div class="tools">
+    <a class="pill" href="/agenda?{{ q }}{{ agenda.today.isoformat() }}">Aujourd'hui</a>
+    <div class="switch" role="group" aria-label="Affichage">
+      <a href="/agenda?jour={{ agenda.day.isoformat() }}"{% if not semaine %} aria-current="true"{% endif %}>Jour</a>
+      <a href="/agenda?vue=semaine&amp;jour={{ agenda.day.isoformat() }}"{% if semaine %} aria-current="true"{% endif %}>Semaine</a>
+    </div>
+  </div>
+</div>
+
+{% macro actions(it) %}{% if it.block_id %}<span class="actions"><button type="button" data-cb="ok:{{ it.block_id }}">✅ Fait</button><button type="button" data-cb="rep:{{ it.block_id }}">⏭ Reporter</button></span>{% endif %}{% endmacro %}
+
+{% if semaine %}
+<div class="week">
+  {% for d in agenda.days %}
+  {% set tz = d.window_start.tzinfo %}
+  {% set is_today = d.day == agenda.today %}
+  <section class="wday{% if is_today %} today{% endif %}" aria-labelledby="wd-{{ loop.index }}">
+    <h3 id="wd-{{ loop.index }}"><a href="/agenda?jour={{ d.day.isoformat() }}"{% if is_today %} aria-current="date"{% endif %}>{{ d.day|fr_day_short }}</a>{% if is_today %} <small>aujourd'hui</small>{% endif %}</h3>
+    {% if d.items or d.dues %}
+    <ul class="chips-list">
+      {% for it in d.items|sort(attribute="start") %}
+      <li class="chip {{ it.kind }}" style="--c: {{ it.color }}"><span class="time">{{ it.start|hm(tz) }}</span><span class="name">{{ it.title }}</span></li>
+      {% endfor %}
+      {% for du in d.dues %}
+      <li class="chip due" style="--c: {{ du.color }}"><span class="time">⚑ {{ du.at|hm(tz) }}</span><span class="name">{{ du.title }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted none">Rien de prévu</p>{% endif %}
+  </section>
+  {% endfor %}
+</div>
+
 {% else %}
-<nav class="daynav" aria-label="Jours">
-  <a href="/agenda?jour={{ (agenda.day - timedelta(days=1)).isoformat() }}">← Veille</a>
-  <a href="/agenda?jour={{ (agenda.day + timedelta(days=1)).isoformat() }}">Lendemain →</a>
-</nav>
-<h2>{{ jours[agenda.day.weekday()] }} {{ agenda.day.day }}</h2>
-{% if agenda.view.items %}<ul>{% for it in agenda.view.items %}{{ item(it) }}{% endfor %}</ul>
-{% else %}<p class="muted">Rien de prévu ce jour-là.</p>{% endif %}
+{% set v = agenda.view %}
+{% set tz = v.window_start.tzinfo %}
+{% set total = (v.window_end - v.window_start).total_seconds() %}
+{% set first = v.window_start.replace(minute=0, second=0, microsecond=0) %}
+<div class="dayview">
+  <div class="timeline" style="--hours: {{ (total / 3600)|round(2) if total > 0 else 1 }}" aria-hidden="true">
+    {% if total > 0 %}
+    {% for i in range(25) %}{% set h = first + timedelta(hours=i) %}
+    {% if v.window_start <= h <= v.window_end %}<div class="hour" style="top: {{ ((h - v.window_start).total_seconds() * 100 / total)|round(2) }}%"><span>{{ h|hm }}</span></div>{% endif %}
+    {% endfor %}
+    {% for it in v.items %}
+    <div class="slot {{ it.kind }}" style="--c: {{ it.color }}; top: {{ it.top }}%; height: {{ it.height }}%; --lane: {{ it.lane }}; --lanes: {{ it.lanes }}">
+      <span class="time">{{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}</span> <span class="name">{{ it.title }}</span></div>
+    {% endfor %}
+    {% if agenda.day == agenda.today and agenda.now and v.window_start <= agenda.now <= v.window_end %}
+    <div class="nowline" style="top: {{ ((agenda.now - v.window_start).total_seconds() * 100 / total)|round(2) }}%"></div>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="dayside">
+    <section aria-labelledby="prog-h"><h3 id="prog-h">Au programme</h3>
+      {% if v.items %}
+      <ul class="agenda-list">
+        {% for it in v.items|sort(attribute="start") %}
+        <li class="{{ it.kind }}" style="--c: {{ it.color }}">
+          <span class="time">{{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}</span>
+          <span class="name">{{ it.title }}</span>
+          <small class="muted">{{ KIND[it.kind] }}{% if it.kind == "block" and not it.block_id %} · fait{% endif %}</small>
+          {{ actions(it) }}
+        </li>
+        {% endfor %}
+      </ul>
+      {% elif v.dues %}<p class="muted">Aucun créneau ce jour-là.</p>
+      {% else %}<p class="muted empty-day">Rien de prévu ce jour-là.</p>{% endif %}
+    </section>
+    {% if v.dues %}
+    <section aria-labelledby="dues-h"><h3 id="dues-h">Échéances du jour</h3>
+      <ul class="agenda-list dues">
+        {% for du in v.dues %}<li style="--c: {{ du.color }}"><span class="time">⚑ {{ du.at|hm(tz) }}</span><span class="name">{{ du.title }}</span></li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+</div>
 {% endif %}

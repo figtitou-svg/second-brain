@@ -12,7 +12,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass
-from datetime import MAXYEAR, MINYEAR, date, timedelta
+from datetime import MAXYEAR, MINYEAR, date, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -21,6 +21,7 @@ from aiohttp import web
 from markupsafe import Markup   # dépendance de Jinja2
 
 from bot.handlers import COMMANDS, BotService
+from coach import fmt
 from web import actions
 
 log = logging.getLogger("web.server")
@@ -93,10 +94,21 @@ def _same(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode("utf-8", "surrogateescape"), b.encode("utf-8", "surrogateescape"))
 
 
+def _hm(moment: datetime, tz: tzinfo | None = None) -> str:
+    """Heure « 14h05 », ramenée au fuseau donné (celui de la fenêtre du jour) quand il y en a un."""
+    if tz is not None and moment.tzinfo is not None:
+        moment = moment.astimezone(tz)
+    return f"{moment:%Hh%M}"
+
+
 def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float] = time.time) -> web.Application:
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
     env.filters["tg"] = lambda text: Markup(actions.safe_html(text))   # HTML Telegram filtré par safe_html
     env.globals["timedelta"] = timedelta                                 # navigation jour / semaine de l'Agenda
+    env.filters["fr_day"] = fmt.day_long                                 # « mardi 27 octobre »
+    env.filters["fr_day_short"] = fmt.day_short                          # « mar. 27 oct. »
+    env.filters["dur"] = fmt.dur                                         # « 2 h 30 »
+    env.filters["hm"] = _hm
     discussion = actions.Discussion()
     fails: list[float] = []
 

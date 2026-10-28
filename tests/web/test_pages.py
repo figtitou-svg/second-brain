@@ -257,3 +257,90 @@ def test_pages_without_views_say_unavailable():
             frag = await (await c.get(f"/fragment/{url[1:]}")).text()
             assert "indisponible" in frag and 'id="nav"' not in frag, url
     run(app, scenario)
+
+
+# --- Task 5 : rendu de l'Agenda et du Récap semaine ------------------------------------------------------
+
+def test_agenda_day_shows_timeline_dues_and_now_line_only_today():
+    app, db = make()
+    db.upsert_task(Task(title="[BD] TP", due=dt(2026, 10, 27, 18)))
+
+    async def scenario(c):
+        await login(c)
+        today = await (await c.get("/agenda?jour=2026-10-27")).text()
+        assert "[BD] TP" in today and "nowline" in today and "Aujourd" in today
+        assert "mardi 27 octobre" in today and "Échéances du jour" in today and "18h00" in today
+        other = await (await c.get("/agenda?jour=2026-10-28")).text()
+        assert "nowline" not in other and "Rien de prévu" in other and "mercredi 28 octobre" in other
+    run(app, scenario)
+
+
+def test_week_summary_page_bars_and_empty_state():
+    from coach.models import Block
+    app, db = make()
+
+    async def scenario(c):
+        await login(c)
+        assert "Aucun bloc terminé" in await (await c.get("/semaine")).text()
+    run(app, scenario)
+
+    app, db = make()                                   # une app aiohttp ne se relance pas sur un second serveur
+    p = Project(name="Projet IA")
+    db.save_project(p)
+    t = Task(title="[IA] A", project_id=p.id, status="done")
+    db.upsert_task(t)
+    db.add_block(Block(task_id=t.id, start=NOW - timedelta(days=1, hours=2), end=NOW - timedelta(days=1, hours=1),
+                       outcome="done"))
+    db.upsert_task(Task(title="Rendu en retard", due=NOW - timedelta(days=1)))
+    db.upsert_task(Task(title="Rendu bientôt", due=NOW + timedelta(days=2)))
+
+    async def scenario2(c):
+        await login(c)
+        text = await (await c.get("/semaine")).text()
+        assert "Projet IA" in text and "1 h" in text and data.project_colors(db)[p.id] in text
+        assert "Aucun bloc terminé" not in text and 'style="width: 100%"' in text
+        assert "1 tâche terminée sur 1 travaillée" in text
+        late = text.split('class="duelist late"')[1]
+        assert "Rendu en retard" in late and "Rendu bientôt" not in late.split("</ul>")[0]
+        assert "Rendu bientôt" in text
+    run(app, scenario2)
+
+
+def test_agenda_day_positions_overlapping_items_in_lanes_and_escapes_titles():
+    from coach.models import Block
+    app, db = make()
+    a = Task(title="<b>Projet</b> A", status="scheduled")
+    b = Task(title="Projet B", status="scheduled")
+    db.upsert_task(a)
+    db.upsert_task(b)
+    db.add_block(Block(task_id=a.id, start=dt(2026, 10, 27, 14), end=dt(2026, 10, 27, 15)))
+    db.add_block(Block(task_id=b.id, start=dt(2026, 10, 27, 14, 30), end=dt(2026, 10, 27, 16)))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/agenda?jour=2026-10-27")).text()
+        assert "<b>Projet</b>" not in text and "&lt;b&gt;Projet&lt;/b&gt; A" in text
+        assert "--lane: 0; --lanes: 2" in text and "--lane: 1; --lanes: 2" in text
+        assert "top: 42.86%" in text                    # 14h dans la fenêtre 8h–22h
+        assert "14h00–15h00" in text and 'class="hour"' in text
+    run(app, scenario)
+
+
+def test_agenda_week_highlights_today_and_lists_items_as_chips():
+    from coach.models import Block
+    app, db = make()
+    t = Task(title="[IA] Entraîner", status="scheduled")
+    db.upsert_task(t)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 29, 9), end=dt(2026, 10, 29, 10)))
+
+    async def scenario(c):
+        await login(c)
+        week = await (await c.get("/agenda?vue=semaine&jour=2026-10-27")).text()
+        assert week.count('class="wday') == 7 and week.count('class="wday today"') == 1
+        assert 'href="/agenda?jour=2026-10-27" aria-current="date"' in week
+        assert 'href="/agenda?vue=semaine&amp;jour=2026-10-19"' in week
+        assert 'href="/agenda?vue=semaine&amp;jour=2026-11-02"' in week
+        assert "[IA] Entraîner" in week and "09h00" in week and "nowline" not in week
+        other = await (await c.get("/agenda?vue=semaine&jour=2026-11-04")).text()
+        assert 'class="wday today"' not in other
+    run(app, scenario)

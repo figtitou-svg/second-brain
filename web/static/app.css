@@ -114,8 +114,80 @@ a.item:hover{color:var(--text)}
 .offline{position:fixed;top:64px;left:0;right:0;background:var(--alert);color:#fff;padding:8px 16px;z-index:38}
 .login{max-width:360px;margin:15vh auto;display:flex;flex-direction:column;gap:10px}
 .login input{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);padding:0 12px}
+/* agenda : en-tête (flèches, Aujourd'hui, bascule Jour | Semaine) */
+.agenda-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-top:10px}
+.agenda-head>*{min-width:0}
+.daynav{display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 240px}
+.dayname{flex:1;min-width:0;margin:0;font-size:17px;font-weight:600;text-align:center;color:var(--text);overflow-wrap:anywhere}
+.arrow,.pill,.switch a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;
+  padding:0 12px;border-radius:10px;color:var(--text);text-decoration:none;background:var(--card);border:1px solid var(--line)}
+.arrow{font-size:18px;padding:0}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.switch{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.switch a{border:0;border-radius:0;color:var(--muted)}
+.switch a[aria-current]{background:var(--accent);color:var(--bg)}
+#agenda h3{font-size:14px;font-weight:400;color:var(--muted);margin:18px 0 8px}
+/* agenda jour : frise verticale (hauteur proportionnelle à la fenêtre), puis la liste à côté ou dessous */
+.dayview{display:grid;grid-template-columns:minmax(0,1fr);gap:0 20px;margin-top:14px}
+.dayview>*{min-width:0}
+.timeline{position:relative;height:calc(var(--hours) * 48px);min-height:480px;margin-left:44px;
+  border-left:1px solid var(--line)}
+.hour{position:absolute;left:0;right:0;border-top:1px solid var(--line);height:0}
+.hour span{position:absolute;left:-44px;width:40px;top:-9px;font-size:12px;line-height:18px;color:var(--muted);text-align:right}
+.slot{position:absolute;left:calc((100% - 6px) * var(--lane) / var(--lanes) + 4px);
+  width:calc((100% - 6px) / var(--lanes) - 4px);min-height:18px;overflow:hidden;padding:2px 6px;border-radius:6px;
+  background:color-mix(in srgb,var(--c) 30%,var(--card));border-left:4px solid var(--c);font-size:12px;line-height:16px;
+  overflow-wrap:anywhere;min-width:0}
+.slot .time{color:var(--muted)}
+.slot.course,.slot.event{background:color-mix(in srgb,var(--c) 45%,var(--card))}
+.timeline .nowline{left:-6px;right:0;top:0;bottom:auto;width:auto;height:2px;transform:translateY(-1px);z-index:2}
+.timeline .nowline::before{content:"";position:absolute;left:-4px;top:-4px;width:10px;height:10px;border-radius:50%;
+  background:var(--alert)}
+.agenda-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.agenda-list li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;background:var(--card);border-radius:12px;
+  border-left:4px solid var(--c);padding:10px 12px;min-width:0;overflow-wrap:anywhere}
+.agenda-list .time{font-variant-numeric:tabular-nums;color:var(--muted);flex:none}
+.agenda-list .name{flex:1 1 140px;min-width:0}
+.agenda-list small{flex:none}
+.agenda-list .actions{flex-basis:100%;margin-top:6px}
+.empty-day{background:var(--card);border-radius:12px;padding:14px}
+/* agenda semaine : un jour après l'autre, puis 2 ou 3 colonnes, puis 7 */
+.week{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:14px}
+.wday{background:var(--card);border-radius:var(--radius);padding:8px 10px 10px;min-width:0;border:2px solid transparent}
+.wday.today{border-color:var(--accent)}
+#agenda .wday h3{margin:0 0 6px;font-size:14px}
+.wday h3 a{display:inline-flex;align-items:center;min-height:44px;color:var(--text);text-decoration:none}
+.wday h3 small{color:var(--accent)}
+.wday .none{margin:0;font-size:13px}
+.chips-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.chip{display:flex;flex-direction:column;padding:4px 8px;border-radius:8px;border-left:4px solid var(--c);
+  background:color-mix(in srgb,var(--c) 18%,var(--bg));font-size:13px;line-height:1.3;min-width:0;overflow-wrap:anywhere}
+.chip .time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip.due{border-left-style:dashed}
+/* récap semaine */
+.recap{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px}
+.recap>*{min-width:0}
+.bars{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px}
+.bars li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;min-width:0}
+.bars .name{min-width:0;overflow-wrap:anywhere}
+.bars .val{font-variant-numeric:tabular-nums}
+.bars .lane{grid-column:1/-1;height:12px;border-radius:6px;background:var(--line);overflow:hidden}
+.bars .fill{display:block;height:100%;min-width:4px;border-radius:6px;background:var(--c)}
+.total{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin:14px 0 4px;padding-top:10px}
+.duelist{list-style:none;padding:0;margin:0}
+.duelist li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;padding:8px 0;
+  border-bottom:1px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.duelist .name{min-width:0;flex:1 1 160px}
+.duelist .when{color:var(--muted);flex:none}
+.duelist.late .when,.duelist.late li{color:var(--alert)}
+@media (prefers-color-scheme: light){.bars .fill,.chip,.slot{border-left-color:color-mix(in srgb,var(--c) 78%,#000)}
+  .bars .fill{background:color-mix(in srgb,var(--c) 78%,#000)}}
 /* tablette : menu en icônes, 2 colonnes */
 @media (min-width:700px){
+  .week{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .recap{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .recap-time{grid-column:1/-1}
+  .timeline{min-height:560px}
   .menu-toggle,.scrim,.bottom{display:none}
   .nav{transform:none;visibility:visible;width:72px;padding:12px 8px;transition:none}
   .nav .label,.nav small{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
@@ -143,5 +215,12 @@ a.item:hover{color:var(--text)}
   main{margin-left:220px;padding:24px 32px}
   .offline{left:220px}
   #home{grid-template-columns:repeat(3,1fr)}
+  .dayview{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  .week{grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+  .wday{padding:6px}
+  .recap{grid-template-columns:minmax(0,3fr) minmax(0,2fr) minmax(0,2fr)}
+  .recap-time{grid-column:auto}
 }
+/* tablette large : 3 colonnes pour la semaine */
+@media (min-width:900px) and (max-width:1099.98px){.week{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
