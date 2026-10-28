@@ -1,6 +1,18 @@
-{# Notes et documents (gabarit minimal, design complet à la Task 6) : récents, ou résultats de la recherche. #}
-<form method="get" action="/notes" role="search">
-  <label for="q">Rechercher</label> <input id="q" name="q" type="search" maxlength="200" value="{{ notes.query }}">
-</form>
-{% if not notes.docs %}<p class="muted">{{ "Aucun résultat." if notes.searched else "Aucune note." }}</p>{% endif %}
-<ul>{% for d in notes.docs %}<li><a href="/notes/{{ d.id|urlencode }}">{{ d.title or "Sans titre" }}</a></li>{% endfor %}</ul>
+{# Notes et documents : récents, ou résultats de la recherche (requête déjà nettoyée par les données).
+   Jamais le texte intégral ici : seulement l'extrait court (≤ 240 caractères), échappé.
+   Identifiant : |urlencode laisse « / » tel quel, d'où le replace (les identifiants de la mémoire sont hexadécimaux). #}
+<h2 class="sec-h">{% if notes.searched %}Résultats pour « {{ notes.query }} »{% else %}Récents{% endif %}
+  {% if notes.docs %}<span class="n">{{ notes.docs|length }}</span>{% endif %}</h2>
+{% if notes.docs %}
+<ul class="cards nlist-notes">
+  {% for d in notes.docs %}
+  <li class="rowcard notecard">
+    <h3 class="rtitle"><a href="/notes/{{ d.id|urlencode|replace('/', '%2F') }}">{{ d.title or "Sans titre" }}</a></h3>
+    {% include "_note_meta.html" %}
+    {% if d.excerpt %}<p class="excerpt">{{ d.excerpt }}</p>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted empty-state">{% if notes.searched %}Aucune note ne correspond.{% else %}Aucune note pour l'instant.{% endif %}</p>
+{% endif %}

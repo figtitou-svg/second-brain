@@ -2,5 +2,17 @@
 {% block title %}Notes et documents · Second Brain{% endblock %}
 {% block main %}
 <h1>Notes et documents</h1>
+{# le formulaire reste hors du fragment rechargé : une saisie en cours n'est jamais effacée ; GET simple, sans JS #}
+<form class="nsearch" method="get" action="/notes" role="search">
+  <label for="q">Rechercher dans les notes</label>
+  <div class="nsearch-row">
+    <input id="q" name="q" type="search" maxlength="200" autocomplete="off" value="{{ notes.query }}">
+    <button type="submit" class="primary">Rechercher</button>
+  </div>
+  <p class="nsearch-links">
+    {% if notes.query %}<a href="/notes">Effacer</a>{% endif %}
+    <a href="/discussion">Poser une question</a>
+  </p>
+</form>
 <section id="notes" data-refresh="/fragment/notes{% if notes.query %}?q={{ notes.query|urlencode }}{% endif %}">{% include "_notes_body.html" %}</section>
 {% endblock %}

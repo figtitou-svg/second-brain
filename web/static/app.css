@@ -339,6 +339,38 @@ a.item:hover{color:var(--text)}
   .sgroup{border-top-color:var(--c);border-top-color:color-mix(in srgb,var(--c) 78%,#000)}
   .sgroup .dot{background:var(--c);background:color-mix(in srgb,var(--c) 78%,#000)}}
 
+/* --- notifications : jours titrés, messages en cartes sobres (plus récent d'abord) --- */
+.nday{min-width:0}
+.nlist{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.ncard{--c:var(--line)}
+.ncard.undelivered{--c:var(--alert)}
+.nhead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;color:var(--muted)}
+.ntime{font-variant-numeric:tabular-nums}
+.nr{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;border:1px solid var(--alert);color:var(--alert);
+  font-weight:700;line-height:22px}
+.ntext{min-width:0;overflow-wrap:anywhere}
+.ntext pre,.ntext code{white-space:pre-wrap;overflow-wrap:anywhere}
+.ntext a{color:var(--accent)}
+/* --- notes et documents : recherche hors du fragment, cartes, lecture d'une note --- */
+.nsearch{display:flex;flex-direction:column;gap:6px;margin-top:12px;min-width:0;max-width:640px}
+.nsearch label{font-size:14px;color:var(--muted)}
+.nsearch-row{display:flex;gap:8px;min-width:0}
+.nsearch input{flex:1;min-width:0;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);padding:0 12px}
+.nsearch .primary{flex:none;background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:700}
+.nsearch-links{display:flex;flex-wrap:wrap;gap:0 16px;margin:0}
+.nsearch-links a,.notecard .rtitle a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent)}
+.notecard{--c:var(--accent)}
+.notecard .rtitle a{color:var(--text);text-decoration:none;overflow-wrap:anywhere;min-width:0}
+.notecard .rtitle a:hover{text-decoration:underline}
+.excerpt{font-size:14px;color:var(--text);overflow-wrap:anywhere}
+.priv{display:inline-flex;align-items:center;padding:0 8px;border-radius:999px;border:1px solid var(--line);
+  color:var(--text);line-height:20px;font-weight:700}
+.priv.private{border-color:var(--alert)}
+.note-h{overflow-wrap:anywhere}
+main>h1.note-h{line-height:1.25;padding-top:8px}
+#note>.meta{margin:10px 0 0}
+.notebody{white-space:pre-wrap;overflow-wrap:anywhere;max-width:72ch;line-height:1.6}
+
 @media (min-width:700px){
   .sort-list,.sgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .week{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}

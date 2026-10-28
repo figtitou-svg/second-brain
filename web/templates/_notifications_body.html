@@ -1,5 +1,37 @@
-{# Notifications (gabarit minimal, design complet à la Task 6) : journal groupé par jour. #}
-{% if not groups %}<p class="muted">Aucune notification.</p>{% endif %}
-{% for g in groups %}<h2>{{ g.label }}</h2>
-<ul>{% for n in g.items %}<li>{{ n.at|hm }} · {{ n.text|tg }}</li>{% endfor %}</ul>
+{# Notifications : journal groupé par jour (libellé local fourni par les données), le plus récent d'abord.
+   Texte : HTML Telegram filtré par tg (jamais marqué sûr tel quel). Boutons : (libellé, callback) déjà dans le vocabulaire du bot
+   (ok:, nf:, rep:, nw:, td: …) ; au-delà de 3, les suivants sont repliés sous « Plus ». « Non reçu » : texte + icône. #}
+{% for g in groups %}
+{% set gi = loop.index %}
+<section class="nday" aria-labelledby="nd-{{ gi }}">
+  <h2 id="nd-{{ gi }}" class="sec-h">{{ g.label }} <span class="n">{{ g.items|length }}</span></h2>
+  <ol class="nlist">
+    {% for n in g.items %}
+    {% set when = n.at|hm %}
+    {% set flat = n.buttons|sum(start=[]) %}
+    <li class="rowcard ncard{% if not n.delivered %} undelivered{% endif %}">
+      <p class="nhead">
+        <time class="ntime" datetime="{{ n.at.isoformat() }}">{{ when }}</time>
+        {% if not n.delivered %}<span class="nr"><span aria-hidden="true">⚠ </span>Non reçu<span class="sr-only"> : Telegram n'a pas reçu ce message</span></span>{% endif %}
+      </p>
+      <div class="ntext">{{ n.text|tg }}</div>
+      {% if flat %}<div class="row-actions">
+        {% for label, cb in flat[:3] %}
+        <button type="button" data-cb="{{ cb }}" aria-label="{{ label }} (message de {{ when }})">{{ label }}</button>
+        {% endfor %}
+      </div>
+      {% if flat|length > 3 %}<details class="more">
+        <summary>Plus<span class="sr-only"> : message de {{ when }}</span></summary>
+        <div class="row-actions secondary">
+          {% for label, cb in flat[3:] %}
+          <button type="button" data-cb="{{ cb }}" aria-label="{{ label }} (message de {{ when }})">{{ label }}</button>
+          {% endfor %}
+        </div>
+      </details>{% endif %}{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<p class="muted empty-state">Aucune notification ces 30 derniers jours.</p>
 {% endfor %}

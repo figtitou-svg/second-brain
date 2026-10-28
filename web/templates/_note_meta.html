@@ -1,0 +1,11 @@
+{# Ligne de métadonnées d'une note (d) : badge privé/public (texte, pas seulement la couleur), type, date, source, dossier. #}
+{% set KINDS = {"note": "Note", "mail": "Courriel", "drive": "Drive", "document": "Document", "photo": "Photo",
+                "pdf": "PDF", "audio": "Audio", "voice": "Vocal"} %}
+<p class="meta">
+  {% if d.sensitivity == "private" %}<span class="priv private"><span aria-hidden="true">🔒 </span>Privé</span>
+  {% elif d.sensitivity == "public" %}<span class="priv public">Public</span>{% endif %}
+  {% if d.kind %}<span>{{ KINDS.get(d.kind, d.kind) }}</span>{% endif %}
+  {% if d.created_at %}<span><time datetime="{{ d.created_at.isoformat() }}">{{ d.created_at|fr_day_short }} {{ d.created_at.year }}</time></span>{% endif %}
+  {% if d.source %}<span>Source : {{ d.source }}</span>{% endif %}
+  {% if d.folder %}<span><span aria-hidden="true">📁 </span>Dossier : {{ d.folder }}</span>{% endif %}
+</p>

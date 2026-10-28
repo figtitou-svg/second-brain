@@ -1,3 +1,4 @@
-{# Une note (gabarit minimal, design complet à la Task 6) : texte intégral, échappé. #}
-<p class="muted">{{ note.kind }}{% if note.source %} · {{ note.source }}{% endif %}</p>
-<pre>{{ note.body }}</pre>
+{# Une note : métadonnées puis texte intégral, échappé (ni tg ni marquage sûr), retours à la ligne gardés (pre-wrap). #}
+{% set d = note %}
+{% include "_note_meta.html" %}
+<div class="card notebody">{{ note.body }}</div>

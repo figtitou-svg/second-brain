@@ -410,3 +410,111 @@ def test_new_pages_with_data_have_no_inline_script_or_safe_style():
             assert all(re.fullmatch(r"--c: #[0-9A-Fa-f]{6}", s) for s in re.findall(r'style="([^"]*)"', text.split("<main")[1])), url
             assert "http://" not in text and "https://" not in text, url
     run(app, scenario)
+
+
+# --- Task 6 : gabarits Notifications et Notes ---------------------------------------------------------------
+
+from web import notifylog  # noqa: E402
+
+TR_BOT = lambda cb: cb.replace("done:", "ok:", 1)     # noqa: E731 - comme run._tr, version minimale
+
+
+def test_notification_buttons_use_bot_vocabulary():
+    app, db = make()
+    notify = notifylog.logged(lambda text, buttons=None: True, lambda: db, TR_BOT, clock=lambda: NOW)
+    notify("Bloc <b>fini</b> ?", [("✅ Fait", "done:b1"), ("Pas fini", "nf:b1")])
+
+    async def scenario(c):
+        await login(c)
+        for url in ("/notifications", "/fragment/notifications"):
+            body = (await (await c.get(url)).text()).split('id="notifications"')[-1]
+            assert body.count('data-cb="ok:b1"') == 1 and 'data-cb="nf:b1"' in body and "done:" not in body
+            assert "<b>fini</b>" in body
+            for cb, label, visible in _buttons(body):
+                assert visible and visible in label, (cb, label, visible)
+    run(app, scenario)
+
+
+def test_notifications_days_text_undelivered_and_more():
+    app, db = make()
+    db.log_notification('<b>gras</b> <script>alert("x")</script>', [], True, NOW - timedelta(days=1))
+    db.log_notification("perdu", [[("A", "td:1"), ("B", "td:2")], [("C", "td:3"), ("D", "td:4"), ("E", "td:5")]],
+                        False, NOW)
+    db.log_notification("matin", [], True, NOW - timedelta(hours=1))
+
+    async def scenario(c):
+        await login(c)
+        body = (await (await c.get("/notifications")).text()).split('id="notifications"')[1]
+        heads = re.findall(r'<h2[^>]*class="sec-h"[^>]*>([^<]*)<', body)
+        assert [h.strip() for h in heads] == ["mardi 27 octobre", "lundi 26 octobre"]
+        assert body.index("perdu") < body.index("matin") < body.index("gras")       # plus récent d'abord
+        assert body.count("Non reçu") == 1                                          # seulement le non distribué
+        card = body.split("perdu")[0].rsplit("<li", 1)[1]
+        assert "undelivered" in card and "Non reçu" in card
+        assert "<b>gras</b>" in body and "<script>" not in body and "&lt;script&gt;" in body
+        more = body.split('<details class="more">')[1].split("</details>")[0]
+        assert 'data-cb="td:4"' in more and 'data-cb="td:5"' in more and 'data-cb="td:3"' not in more
+        for cb in ("td:1", "td:2", "td:3", "td:4", "td:5"):
+            assert body.count(f'data-cb="{cb}"') == 1, cb
+        assert "|safe" not in open("web/templates/_notifications_body.html", encoding="utf-8").read()
+    run(app, scenario)
+
+
+def test_notifications_empty_state():
+    app, _ = make()
+
+    async def scenario(c):
+        await login(c)
+        frag = await (await c.get("/fragment/notifications")).text()
+        assert "Aucune notification ces 30 derniers jours." in frag and "data-cb" not in frag
+    run(app, scenario)
+
+
+def test_notes_pages_escape_and_hide_full_text():
+    notes = FakeNotes()
+    long_body = "Début du texte. " + "mot " * 200 + "FIN-SECRETE"
+    notes.docs["n3"] = dict(notes.docs["n1"], id="n3", title="<script>t</script>", sensitivity="public",
+                            body=long_body + "\n<script>b</script>\nligne 2", excerpt=" ".join(long_body.split())[:240],
+                            folder="Cours <i>")
+    app, _ = make(notes=notes)
+
+    async def scenario(c):
+        await login(c)
+        page = await (await c.get("/notes")).text()
+        assert "Récents" in page and "Début du texte." in page and "FIN-SECRETE" not in page
+        assert "<script>t" not in page and "&lt;script&gt;t" in page and "Cours <i>" not in page
+        assert 'href="/notes/n3"' in page and 'href="/notes/n1"' in page
+        assert "Privé" in page and "Public" in page and 'href="/discussion"' in page
+        form = page.split('role="search"')[0].rsplit("<form", 1)[1] + page.split('role="search"')[1].split("</form>")[0]
+        assert 'method="get"' in form and 'name="q"' in form and "<label" in form and 'type="submit"' in form
+        assert 'href="/notes">Effacer' not in page                                       # pas de requête
+        section = page.split('id="notes"')[1]
+        assert 'role="search"' not in section                                           # formulaire hors du fragment
+        note = await (await c.get("/notes/n3")).text()
+        assert "FIN-SECRETE" in note and "<script>b" not in note and "&lt;script&gt;b" in note
+        assert "&lt;script&gt;b&lt;/script&gt;\nligne 2" in note and 'class="card notebody"' in note
+        assert 'href="/notes">← Notes' in note and "Public" in note
+        evil = await (await c.get("/notes?q=%3Cscript%3Ex%22")).text()
+        assert "<script>x" not in evil and 'value="&lt;script&gt;x&#34;"' in evil
+        assert "Résultats pour « &lt;script&gt;x&#34; »" in evil and "Aucune note ne correspond." in evil
+        assert 'href="/notes">Effacer' in evil
+    run(app, scenario)
+
+
+def test_notes_search_results_and_empty_provider():
+    app, _ = make(notes=FakeNotes())
+
+    async def scenario(c):
+        await login(c)
+        found = await (await c.get("/fragment/notes?q=garage")).text()
+        assert "Résultats pour « garage »" in found and 'href="/notes/n1"' in found and "Stage" not in found
+        assert "🔒" in found and "Privé" in found and "Le code est 4721" in found
+    run(app, scenario)
+
+    app, _ = make(notes=None)
+
+    async def scenario2(c):
+        await login(c)
+        page = await (await c.get("/notes")).text()
+        assert "Aucune note pour l'instant." in page and "Récents" in page
+    run(app, scenario2)
