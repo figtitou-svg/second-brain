@@ -114,3 +114,17 @@ def test_dst_change_orders_by_instant():
     db.log_notification("apres", [], True, dt(2026, 10, 25, 3, 10))       # 03:10 Paris, une heure plus tard en UTC
     assert [r.text for r in db.list_notifications()] == ["apres", "avant"]
     assert [r.text for r in db.list_notifications(since=dt(2026, 10, 25, 3, 0))] == ["apres"]
+
+
+def test_db_not_created_yet_then_set_like_run_py():
+    holder, sent = {"db": None}, []
+
+    def raw(text, buttons=None):
+        sent.append(text)
+        return True
+    notify = notifylog.logged(raw, lambda: holder["db"], TR, clock=lambda: NOW)
+    assert notify("alerte de démarrage") is True            # base pas encore créée : envoyé, non journalisé
+    holder["db"] = Database(":memory:")
+    assert notify("après") is True
+    assert sent == ["alerte de démarrage", "après"]
+    assert [r.text for r in holder["db"].list_notifications()] == ["après"]

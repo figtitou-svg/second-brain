@@ -96,17 +96,20 @@ def main() -> None:
     logging.getLogger().addHandler(errors)
 
     cfg = load_config()
-    db = Database()
+    # `db` n'existe pas encore : l'alerte de démarrage part avant (elle n'est alors simplement pas journalisée,
+    # `record` avale l'erreur). Ordre d'origine conservé : startup_check d'abord, Database() ensuite.
+    db: Database | None = None
     # l'unique `notify` du programme : envoie via Telegram et journalise (sans jamais gêner l'envoi)
     notify = notifylog.logged(_telegram_notify(cfg.token, cfg.allowed_user_id), lambda: db, _tr)
-    try:
-        db.purge_notifications(datetime.now(notifylog.TZ) - timedelta(days=30))
-    except Exception:  # noqa: BLE001 - la purge ne doit pas empêcher le démarrage
-        log.warning("journal des notifications : purge impossible", exc_info=True)
     hl = health.Health(notify)
     health.set_instance(hl)
     health.startup_check(notify)
 
+    db = Database()
+    try:
+        db.purge_notifications(datetime.now(notifylog.TZ) - timedelta(days=30))
+    except Exception:  # noqa: BLE001 - la purge ne doit pas empêcher le démarrage
+        log.warning("journal des notifications : purge impossible", exc_info=True)
     sched = CoachScheduler(db, GoogleCalendarClient.from_env(), load_rules(), notify)
     store.configure(db, sched)
     from llm_router import router  # l'IA ne sert qu'à reformuler la raison du focus (sinon raison calculée)
