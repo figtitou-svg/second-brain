@@ -561,3 +561,23 @@ def test_click_discuss_label_is_capped():
         page = await (await c.get("/discussion")).text()
         assert "A" * 200 in page and "A" * 201 not in page and "AZ" not in page
     run(app, scenario)
+
+
+def test_failing_say_returns_error_fragment_and_is_kept_in_discussion():
+    svc = BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42)
+
+    def boom(text, source=None):
+        raise RuntimeError("bot en panne")
+    svc.on_text = boom
+    app, _ = make(svc=svc)
+
+    async def scenario(c):
+        await login(c)
+        token = await csrf_of(c)
+        r = await c.post("/say", data={"text": "Lancer un projet robot"}, headers={"X-CSRF": token})
+        text = await r.text()
+        assert r.status == 200 and 'role="alert"' in text and "Ça n" in text and "bot en panne" not in text
+        page = await (await c.get("/discussion")).text()
+        said = page.index("Lancer un projet robot")
+        assert "Ça n" in page[said:] and "bot en panne" not in page
+    run(app, scenario)

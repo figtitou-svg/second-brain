@@ -51,6 +51,13 @@
     for (const d of el.querySelectorAll("details[data-gkey]")) if (closed.has(d.dataset.gkey)) d.open = false;
   }
 
+  // réponse d'erreur du serveur (fragment _error.html : <p class="error" role="alert">)
+  function failed(html) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html;
+    return tpl.content.querySelector('[role="alert"], .error') !== null;
+  }
+
   // adresse interne seulement (« /chemin », jamais « //hôte » ni « https:… »)
   function internal(url) {
     return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
@@ -101,8 +108,8 @@
         // suite de conversation : la réponse est rangée dans la Discussion, on y va
         const label = (cb.dataset.label || cb.textContent || "").trim();
         const html = await post("/click", {data: cb.dataset.cb, discuss: "1", label});
-        cb.disabled = false;
-        if (html !== null) location.href = "/discussion";
+        if (html === null || failed(html)) { cb.disabled = false; show(html); return; }
+        location.href = "/discussion";     // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
       const html = await post("/click", {data: cb.dataset.cb});
@@ -126,8 +133,8 @@
         if (sy.disabled) return;
         sy.disabled = true;
         const html = await post("/say", {text: sy.dataset.say});
-        sy.disabled = false;
-        if (html !== null) location.href = goto;
+        if (html === null || failed(html)) { sy.disabled = false; show(html); return; }
+        location.href = goto;              // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
       say(sy.dataset.say, document.querySelector("#thread") ? "#thread" : null);

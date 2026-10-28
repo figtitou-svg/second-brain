@@ -20,7 +20,7 @@ import jinja2
 from aiohttp import web
 from markupsafe import Markup   # dépendance de Jinja2
 
-from bot.handlers import COMMANDS, BotService
+from bot.handlers import COMMANDS, BotService, Reply
 from coach import fmt
 from web import actions
 
@@ -228,6 +228,8 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
             replies = await blocking(actions.submit, deps.svc, text)
         except Exception:  # noqa: BLE001 - jamais de trace Python à l'écran
             log.exception("saisie web échouée")
+            if text.strip():       # l'échec reste visible dans la Discussion, sous la commande tapée
+                discussion.add(text.strip(), [Reply(actions.CLICK_FAILED)])
             return error_fragment(request, actions.CLICK_FAILED)
         ex = discussion.add(text.strip(), replies) if text.strip() else None
         return page("_exchange.html", request, ex=ex)
