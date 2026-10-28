@@ -10,7 +10,7 @@ from coach.db import Database
 from coach.rules import load_rules
 from coach.scheduler import CoachScheduler
 from tests.coach.conftest import FROZEN, dt
-from web import system
+from web import data, system
 
 import run
 
@@ -30,6 +30,7 @@ def test_web_deps_builds_every_section(tmp_path):
     assert isinstance(deps.quota(), str)
     assert deps.views.focus() == [] and deps.views.projects() == []
     assert deps.views.agenda(None, "jour")["day"] == NOW.date()
+    assert isinstance(deps.views.notes_provider, data.MemoryNotes)        # Notes : la vraie mémoire, en lecture seule
 
 
 def test_start_web_never_raises(monkeypatch, caplog):

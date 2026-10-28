@@ -1,0 +1,3 @@
+{# Suggestions (gabarit minimal, design complet à la Task 5). #}
+{% if suggestions.total %}<p>{{ suggestions.total }} suggestion{{ "s" if suggestions.total > 1 }} en attente.</p>
+{% else %}<p class="muted">Aucune suggestion en attente.</p>{% endif %}

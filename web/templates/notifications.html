@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Notifications · Second Brain{% endblock %}
+{% block main %}
+<h1>Notifications</h1>
+<section id="notifications" data-refresh="/fragment/notifications">{% include "_notifications_body.html" %}</section>
+{% endblock %}

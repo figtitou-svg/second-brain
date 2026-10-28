@@ -250,7 +250,7 @@ def test_every_font_referenced_by_the_css_exists_and_is_served():
     run(app, scenario)
 
 
-def test_menu_lists_all_sections_with_future_ones_disabled():
+def test_menu_lists_all_sections_as_links():
     app, _ = make_app()
 
     async def scenario(c):
@@ -259,8 +259,9 @@ def test_menu_lists_all_sections_with_future_ones_disabled():
         for name in ("Accueil", "Agenda", "Focus", "Tâches", "Projets", "Récap semaine", "À trier", "Suggestions",
                      "Notifications", "Discussion", "Notes et documents", "Système"):
             assert name in page, name
-        assert page.count("bientôt") == 4          # À trier, Suggestions, Notifications, Notes et documents
-        assert 'href="/discussion"' in page and 'href="/systeme"' in page
+        assert page.count("bientôt") == 0          # étape 3 : plus aucune entrée « bientôt »
+        for href in ("/discussion", "/systeme", "/a-trier", "/suggestions", "/notifications", "/notes"):
+            assert f'href="{href}"' in page, href
     run(app, scenario)
 
 

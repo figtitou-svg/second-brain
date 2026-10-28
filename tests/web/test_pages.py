@@ -18,18 +18,25 @@ from web import data, server, system
 NOW = dt(2026, 10, 27, 10, 27)
 
 
-def make(views=True, svc=None):
+def make(views=True, svc=None, notes=None, break_badges=False, badge_clock=None):
+    """App de test. `notes` : fournisseur de notes des Views ; `break_badges` : Views.badges lève (panne des
+    pastilles) ; `badge_clock` : horloge du cache des pastilles."""
     db = Database(":memory:")
     cal = FakeCalendarClient()
     sched = CoachScheduler(db, cal, load_rules(FROZEN), lambda t, b=None: None, lambda: NOW)
     agenda = data.AgendaCache(cal.agenda)
     if views is True:
-        views = data.Views(db, sched, agenda, clock=lambda: NOW)
+        views = data.Views(db, sched, agenda, clock=lambda: NOW, notes=notes)
+    if break_badges and views:
+        def boom():
+            raise RuntimeError("pastilles illisibles")
+        views.badges = boom
     deps = server.Deps(
         svc=svc or BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42),
         home=lambda: data.build_home(db, sched, agenda, NOW), machine=system.machine, errors=system.ErrorLog(),
         components=lambda: [], quota=lambda: "q", views=views or None)
-    return server.create_app(deps, PASSWORD, "0" * 64, clock=lambda: 1_800_000_000.0), db
+    extra = {"badge_clock": badge_clock} if badge_clock else {}
+    return server.create_app(deps, PASSWORD, "0" * 64, clock=lambda: 1_800_000_000.0, **extra), db
 
 
 PAGES = ["/agenda", "/focus", "/taches", "/projets", "/semaine"]
@@ -55,7 +62,7 @@ def test_every_page_and_fragment_requires_login_and_renders_on_empty_db():
     run(app, scenario)
 
 
-def test_menu_has_five_new_links_and_four_remaining_soon_entries():
+def test_menu_has_five_new_links_and_no_soon_entries_left():
     app, _ = make()
 
     async def scenario(c):
@@ -63,7 +70,7 @@ def test_menu_has_five_new_links_and_four_remaining_soon_entries():
         page = await (await c.get("/agenda")).text()
         for href in ("/agenda", "/focus", "/taches", "/projets", "/semaine"):
             assert f'href="{href}"' in page, href
-        assert page.count("bientôt") == 4
+        assert page.count("bientôt") == 0                   # étape 3 : les quatre dernières entrées sont des liens
         assert 'aria-current="page"' in page
         current = re.findall(r'href="([^"]+)"[^>]*aria-current="page"', page)
         assert current == ["/agenda", "/agenda"]                # menu latéral et barre basse : Agenda seul

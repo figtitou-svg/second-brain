@@ -13,10 +13,15 @@
   (None, [("Accueil", "🏠", "/")]),
   ("Organisation", [("Agenda", "📅", "/agenda"), ("Focus", "🎯", "/focus"), ("Tâches", "☑️", "/taches"),
                     ("Projets", "🍩", "/projets"), ("Récap semaine", "📊", "/semaine")]),
-  ("À traiter", [("À trier", "📥", None), ("Suggestions", "💡", None), ("Notifications", "🔔", None)]),
-  ("Mémoire", [("Discussion", "💬", "/discussion"), ("Notes et documents", "🗒️", None)]),
+  ("À traiter", [("À trier", "📥", "/a-trier"), ("Suggestions", "💡", "/suggestions"),
+                 ("Notifications", "🔔", "/notifications")]),
+  ("Mémoire", [("Discussion", "💬", "/discussion"), ("Notes et documents", "🗒️", "/notes")]),
   ("Coulisses", [("Système", "🖥️", "/systeme")]),
 ] %}
+{# pastilles : clé de Views.badges() et libellé lu par les lecteurs d'écran (singulier, pluriel) #}
+{% set counted = {"/a-trier": ("a_trier", "à trier", "à trier"),
+                  "/suggestions": ("suggestions", "suggestion", "suggestions"),
+                  "/taches": ("taches", "tâche ouverte", "tâches ouvertes")} %}
 {% if csrf %}
 <button class="menu-toggle" type="button" aria-controls="nav" aria-expanded="false" aria-label="Ouvrir le menu">☰</button>
 <nav id="nav" class="nav" aria-label="Sections">
@@ -24,14 +29,13 @@
   {% for group, items in sections %}
     {% if group %}<div class="group">{{ group }}</div>{% endif %}
     {% for label, icon, href in items %}
-      {% if href %}
-      {# page courante : l'adresse exacte, ou une sous-page (/projets/<id> marque Projets) #}
+      {# page courante : l'adresse exacte, ou une sous-page (/projets/<id> marque Projets, /notes/<id> Notes) #}
       {% set here = path == href or (href != "/" and path.startswith(href ~ "/")) %}
+      {% set n = badges.get(counted[href][0], 0) if href in counted else 0 %}
       <a class="item{% if here %} current{% endif %}" href="{{ href }}" title="{{ label }}"{% if here %} aria-current="page"{% endif %}>
-        <span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span></a>
-      {% else %}
-      <span class="item soon" title="{{ label }}"><span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span><small>bientôt</small></span>
-      {% endif %}
+        <span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span>
+        {%- if n is number and n > 0 %}<b class="badge" aria-hidden="true">{{ n }}</b><span class="sr-only">({{ n }} {{ counted[href][1] if n == 1 else counted[href][2] }})</span>{% endif %}
+        {%- if href == "/projets" and badges.get("projets_alerte") %}<i class="dot" role="img" aria-label="Un projet est signalé"></i>{% endif %}</a>
     {% endfor %}
   {% endfor %}
   <form method="post" action="/logout" class="logout" data-post>

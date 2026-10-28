@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Notes et documents · Second Brain{% endblock %}
+{% block main %}
+<h1>Notes et documents</h1>
+<section id="notes" data-refresh="/fragment/notes{% if notes.query %}?q={{ notes.query|urlencode }}{% endif %}">{% include "_notes_body.html" %}</section>
+{% endblock %}

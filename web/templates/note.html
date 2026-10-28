@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title or "Note" }} · Second Brain{% endblock %}
+{% block main %}
+<p class="back"><a href="/notes">← Notes</a></p>
+<h1>{{ note.title or "Sans titre" }}</h1>
+<section id="note" data-refresh="/fragment/notes/{{ note.id|urlencode }}">{% include "_note_body.html" %}</section>
+{% endblock %}

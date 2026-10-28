@@ -36,14 +36,20 @@ a.item:hover{color:var(--text)}
 .item.current{background:var(--card);color:var(--text)}
 .item .icon{flex:none;width:24px;text-align:center}
 .item .label{min-width:0;overflow-wrap:anywhere}
-.item.soon{opacity:.5;cursor:default}.item small{margin-left:auto;font-size:11px}
+/* pastilles du menu : nombre à droite du libellé (en haut à droite de l'icône dans le menu tablette) */
+.item{position:relative}
+.nav .badge{margin-left:auto;flex:none;min-width:22px;height:22px;padding:0 6px;border-radius:11px;font-size:12px;
+  line-height:22px;text-align:center;font-weight:700;background:var(--line);
+  background:color-mix(in srgb,var(--accent) 35%,var(--card));color:var(--text)}
+.nav .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--alert);margin-left:auto}
+.nav .badge+.dot{margin-left:0}
 .logout{margin-top:16px;padding:0 10px}
 .logout button{display:flex;align-items:center;gap:10px;width:100%}
 .bottom{position:fixed;inset:auto 0 0 0;display:flex;background:var(--nav);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom);z-index:20}
 .bottom>*{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;min-height:56px;justify-content:center;
   font-size:12px;color:var(--muted);text-decoration:none}
-.bottom [aria-current]{color:var(--text)}.bottom .soon{opacity:.45}
+.bottom [aria-current]{color:var(--text)}
 /* accueil */
 .today{display:flex;justify-content:space-between;align-items:baseline;padding-left:52px;min-height:44px}
 .today h1{line-height:44px}
@@ -320,10 +326,12 @@ a.item:hover{color:var(--text)}
   .timeline{min-height:560px}
   .menu-toggle,.scrim,.bottom{display:none}
   .nav{transform:none;visibility:visible;width:72px;padding:12px 8px;transition:none}
-  .nav .label,.nav small{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  .nav .label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
     clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
   .nav .group,.brand{display:none}
   .item{justify-content:center;padding:0}
+  .nav .badge{position:absolute;top:2px;right:2px;min-width:18px;height:18px;padding:0 4px;font-size:11px;line-height:18px}
+  .nav .dot{position:absolute;top:6px;right:8px}
   .logout{padding:0}.logout button{justify-content:center;padding:0}
   main{margin-left:72px;padding-bottom:24px}
   main>h1,.today{padding-left:0}
@@ -336,9 +344,11 @@ a.item:hover{color:var(--text)}
 /* ordinateur : menu avec libellés, 3 colonnes */
 @media (min-width:1100px){
   .nav{width:220px}
-  .nav .label,.nav small{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;
+  .nav .label{position:static;width:auto;height:auto;margin:0;overflow:visible;clip:auto;clip-path:none;
     white-space:normal}
-  .nav .item small{margin-left:auto}
+  .nav .badge{position:static;min-width:22px;height:22px;padding:0 6px;font-size:12px;line-height:22px}
+  .nav .dot{position:static;margin-left:auto}
+  .nav .badge+.dot{margin-left:0}
   .nav .group,.brand{display:block}
   .nav .item{justify-content:flex-start;padding:0 10px}
   .logout{padding:0 10px}.logout button{justify-content:flex-start;padding:0 14px}

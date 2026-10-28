@@ -73,7 +73,7 @@ def web_deps(service: BotService, db: Database, sched: CoachScheduler, hl: healt
         errors=errors,
         components=hl.snapshot,
         quota=quota.report,
-        views=web_data.Views(db, sched, agenda))
+        views=web_data.Views(db, sched, agenda, notes=web_data.MemoryNotes()))
 
 
 def start_web(deps: web_server.Deps | None):

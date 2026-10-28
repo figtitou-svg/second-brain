@@ -1,0 +1,6 @@
+{# À trier (gabarit minimal, design complet à la Task 5) : événements proposés et tâches sans créneau. #}
+{% if not a_trier.events and not a_trier.tasks %}<p class="muted">Rien à trier.</p>{% endif %}
+{% if a_trier.events %}<h2>Événements proposés</h2>
+<ul>{% for e in a_trier.events %}<li>{{ e.title }}</li>{% endfor %}</ul>{% endif %}
+{% if a_trier.tasks %}<h2>Tâches à planifier</h2>
+<ul>{% for t in a_trier.tasks %}<li>{{ t.title }}</li>{% endfor %}</ul>{% endif %}

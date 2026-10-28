@@ -23,6 +23,7 @@ from markupsafe import Markup   # dépendance de Jinja2
 from bot.handlers import COMMANDS, BotService, Reply
 from coach import fmt
 from web import actions
+from web.data import clean_query
 
 log = logging.getLogger("web.server")
 
@@ -44,6 +45,31 @@ _COOKIE_VALUE = re.compile(r"([0-9]{1,12})\.([0-9a-f]{32})\.([0-9a-f]{64})")
 _ISO_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 AGENDA_VUES = ("jour", "semaine")
 PROJECT_NOT_FOUND = "Projet introuvable."
+NOTE_NOT_FOUND = "Note introuvable."
+BADGES_TTL = 15.0     # secondes : les pastilles du menu ne sont pas recalculées à chaque page
+# clé des pastilles dans la requête (RequestKey typée quand aiohttp la connaît, ≥ 3.12 ; sinon le texte)
+BADGES_KEY: Any = web.RequestKey("badges", dict) if hasattr(web, "RequestKey") else "badges"
+
+
+class BadgeCache:
+    """Pastilles du menu gardées `ttl` secondes (horloge monotone injectable) ; vidé après chaque action
+    réussie (/click, /say) pour que les nombres suivent tout de suite. Utilisé sur la boucle du serveur seule."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic, ttl: float = BADGES_TTL) -> None:
+        self.clock, self.ttl = clock, ttl
+        self._value: dict | None = None
+        self._at = 0.0
+
+    def get(self) -> dict | None:
+        if self._value is not None and self.clock() - self._at < self.ttl:
+            return self._value
+        return None
+
+    def put(self, value: dict) -> None:
+        self._value, self._at = value, self.clock()
+
+    def invalidate(self) -> None:
+        self._value = None
 
 
 @dataclass
@@ -101,7 +127,8 @@ def _hm(moment: datetime, tz: tzinfo | None = None) -> str:
     return f"{moment:%Hh%M}"
 
 
-def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float] = time.time) -> web.Application:
+def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float] = time.time,
+               badge_clock: Callable[[], float] = time.monotonic) -> web.Application:
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
     env.filters["tg"] = lambda text: Markup(actions.safe_html(text))   # HTML Telegram filtré par safe_html
     env.globals["timedelta"] = timedelta                                 # navigation jour / semaine de l'Agenda
@@ -111,6 +138,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     env.filters["hm"] = _hm
     discussion = actions.Discussion()
     fails: list[float] = []
+    badge_cache = BadgeCache(badge_clock)
 
     def session(request: web.Request) -> str | None:
         """Jeton CSRF de la session si le cookie est valide, sinon None."""
@@ -123,7 +151,8 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         return csrf
 
     def render(name: str, request: web.Request, **ctx: Any) -> str:
-        return env.get_template(name).render(csrf=session(request) or "", path=request.path, **ctx)
+        return env.get_template(name).render(csrf=session(request) or "", path=request.path,
+                                             badges=request.get(BADGES_KEY, {}), **ctx)
 
     def page(name: str, request: web.Request, status: int = 200, **ctx: Any) -> web.Response:
         return web.Response(text=render(name, request, **ctx), status=status, content_type="text/html",
@@ -152,8 +181,26 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
                     raise web.HTTPForbidden(text="Origine refusée.")
                 if not _same(request.headers.get("X-CSRF", ""), csrf):
                     raise web.HTTPForbidden(text="Jeton de sécurité manquant : recharge la page.")
+            elif request.method == "GET" and not request.path.startswith("/fragment/"):
+                request[BADGES_KEY] = await badges()      # pages entières seulement : le menu est dans la mise en page
             return await handler(request)
         return wrapped
+
+    async def badges() -> dict:
+        """Pastilles du menu (gardées BADGES_TTL s) ; toute panne ne retire que les pastilles."""
+        cached = badge_cache.get()
+        if cached is not None:
+            return cached
+        if deps.views is None:
+            return {}
+        try:
+            value = await blocking(deps.views.badges)
+        except Exception:  # noqa: BLE001 - la page reste servie, sans pastilles
+            log.warning("pastilles du menu illisibles", exc_info=True)
+            return {}
+        value = value if isinstance(value, dict) else {}
+        badge_cache.put(value)
+        return value
 
     def locked() -> float:
         """Secondes de blocage restantes (0 si la connexion est permise)."""
@@ -231,6 +278,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
             if text.strip():       # l'échec reste visible dans la Discussion, sous la commande tapée
                 discussion.add(text.strip(), [Reply(actions.CLICK_FAILED)])
             return error_fragment(request, actions.CLICK_FAILED)
+        badge_cache.invalidate()            # l'action a pu changer les nombres du menu
         ex = discussion.add(text.strip(), replies) if text.strip() else None
         return page("_exchange.html", request, ex=ex)
 
@@ -238,6 +286,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         form = await request.post()
         data = str(form.get("data", ""))
         reply = await blocking(actions.click, deps.svc, data)
+        badge_cache.invalidate()            # l'action a pu changer les nombres du menu
         if form.get("discuss") == "1":     # réponse qui attend une suite : elle reste dans la Discussion
             discussion.add(str(form.get("label", "")).strip()[:200] or data, [reply])
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
@@ -272,27 +321,40 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         "taches": organisation("taches", "tasks", "tasks", lambda request: (request.query.get("filtre", "tout"),)),
         "projets": organisation("projets", "cards", "projects"),
         "semaine": organisation("semaine", "week", "week"),
+        "a-trier": organisation("a-trier", "a_trier", "a_trier"),
+        "suggestions": organisation("suggestions", "suggestions", "suggestions"),
+        "notifications": organisation("notifications", "groups", "notifications"),
+        # requête nettoyée ici (≤ 200 caractères, espaces normalisés) : c'est elle que reprend data-refresh
+        "notes": organisation("notes", "notes", "notes", lambda request: (clean_query(request.query.get("q", "")),)),
     }
 
-    async def project(request: web.Request, full_page: bool) -> web.Response:
-        fail = error_page if full_page else error_fragment
-        if deps.views is None:
-            return fail(request)
-        try:
-            value = await blocking(deps.views.project, request.match_info["id"])
-            if value is None:
-                return page("error.html" if full_page else "_error.html", request, status=404,
-                            message=PROJECT_NOT_FOUND)
-            return page("projet.html" if full_page else "_projet_body.html", request, project=value)
-        except Exception:  # noqa: BLE001 - une section en panne n'empêche pas les autres
-            log.exception("section web projet illisible")
-            return fail(request)
+    def detail(name: str, key: str, method: str, not_found: str) -> tuple[Callable, Callable]:
+        """Gestionnaires de `/<route>/{id}` et de son fragment : `deps.views.<method>(id)` ; None -> 404 (dans la
+        mise en page pour la page entière, nu pour le fragment). Gabarits `<name>.html` et `_<name>_body.html`."""
+        async def handle(request: web.Request, full_page: bool) -> web.Response:
+            fail = error_page if full_page else error_fragment
+            if deps.views is None:
+                return fail(request)
+            try:
+                value = await blocking(getattr(deps.views, method), request.match_info["id"])
+                if value is None:
+                    return page("error.html" if full_page else "_error.html", request, status=404, message=not_found)
+                return page(f"{name}.html" if full_page else f"_{name}_body.html", request, **{key: value})
+            except Exception:  # noqa: BLE001 - une section en panne n'empêche pas les autres
+                log.exception("section web %s illisible", name)
+                return fail(request)
 
-    async def project_page(request: web.Request) -> web.Response:
-        return await project(request, True)
+        async def full(request: web.Request) -> web.Response:
+            return await handle(request, True)
 
-    async def project_fragment(request: web.Request) -> web.Response:
-        return await project(request, False)
+        async def fragment(request: web.Request) -> web.Response:
+            return await handle(request, False)
+        return full, fragment
+
+    details = {
+        "projets": detail("projet", "project", "project", PROJECT_NOT_FOUND),
+        "notes": detail("note", "note", "note", NOTE_NOT_FOUND),
+    }
 
     async def security_headers(request: web.Request, response: web.StreamResponse) -> None:
         for name, value in SECURITY_HEADERS.items():
@@ -313,8 +375,9 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         web.post("/say", protected(say)), web.post("/click", protected(click)),
         *[route for name, (full, fragment) in pages.items()
           for route in (web.get(f"/{name}", protected(full)), web.get(f"/fragment/{name}", protected(fragment)))],
-        web.get("/projets/{id}", protected(project_page)),
-        web.get("/fragment/projets/{id}", protected(project_fragment)),
+        *[route for name, (full, fragment) in details.items()
+          for route in (web.get(f"/{name}/{{id}}", protected(full)),
+                        web.get(f"/fragment/{name}/{{id}}", protected(fragment)))],
         web.static("/static", HERE / "static"),
     ])
     return app

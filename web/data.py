@@ -651,6 +651,36 @@ class Views:
             return {}
 
 
+class MemoryNotes:
+    """Fournisseur de notes de `Views` adossé au module `memory` (lecture seule). `memory` n'est importé qu'à
+    l'usage (il charge le routeur LLM) ; toute panne (base absente, verrouillée, corrompue) donne une liste vide
+    ou None : une mémoire cassée ne fait jamais tomber une page."""
+
+    def recent(self, limit: int = 50) -> list[dict]:
+        try:
+            import memory
+            return memory.recent_docs(limit)
+        except Exception:  # noqa: BLE001
+            log.warning("notes : lecture des documents récents impossible", exc_info=True)
+            return []
+
+    def search(self, query: str, k: int = 20) -> list[dict]:
+        try:
+            import memory
+            return memory.search_docs(query, k)
+        except Exception:  # noqa: BLE001
+            log.warning("notes : recherche impossible", exc_info=True)
+            return []
+
+    def get(self, doc_id: str) -> dict | None:
+        try:
+            import memory
+            return memory.get_doc(doc_id)
+        except Exception:  # noqa: BLE001
+            log.warning("notes : lecture d'un document impossible", exc_info=True)
+            return None
+
+
 @dataclass(frozen=True)
 class EventRow:
     event_id: str

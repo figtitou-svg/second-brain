@@ -1,0 +1,6 @@
+{# Notes et documents (gabarit minimal, design complet à la Task 6) : récents, ou résultats de la recherche. #}
+<form method="get" action="/notes" role="search">
+  <label for="q">Rechercher</label> <input id="q" name="q" type="search" maxlength="200" value="{{ notes.query }}">
+</form>
+{% if not notes.docs %}<p class="muted">{{ "Aucun résultat." if notes.searched else "Aucune note." }}</p>{% endif %}
+<ul>{% for d in notes.docs %}<li><a href="/notes/{{ d.id|urlencode }}">{{ d.title or "Sans titre" }}</a></li>{% endfor %}</ul>

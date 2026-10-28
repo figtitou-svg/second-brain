@@ -1,0 +1,5 @@
+{# Notifications (gabarit minimal, design complet à la Task 6) : journal groupé par jour. #}
+{% if not groups %}<p class="muted">Aucune notification.</p>{% endif %}
+{% for g in groups %}<h2>{{ g.label }}</h2>
+<ul>{% for n in g.items %}<li>{{ n.at|hm }} · {{ n.text|tg }}</li>{% endfor %}</ul>
+{% endfor %}
