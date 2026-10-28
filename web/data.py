@@ -11,9 +11,9 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
-from coach import project_watch, projects
+from coach import project_service, project_watch, projects
 from coach.db import Database
-from coach.models import Task
+from coach.models import Suggestion, Task
 
 log = logging.getLogger("web.data")
 
@@ -436,3 +436,118 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
                                 p.id if p else None, rows))
     return groups, counts
+
+
+# --- étape 2 : Projets -----------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ProjectCard:
+    project_id: str
+    name: str
+    color: str
+    status: str
+    percent: int
+    days_left: int | None
+    step: str | None
+    next_task: str | None
+    open_tasks: int
+    alert: bool
+    alert_line: str | None
+
+
+def _percent(prog) -> int:
+    if prog.total_milestones:
+        return prog.done_milestones * 100 // prog.total_milestones
+    return prog.tasks_done * 100 // prog.tasks_total if prog.tasks_total else 0
+
+
+def project_cards(db: Database, now: datetime) -> list[ProjectCard]:
+    colors = project_colors(db)
+    out: list[ProjectCard] = []
+    for p in db.list_projects("active", "paused"):
+        ms, tasks = db.list_milestones(p.id), db.list_project_tasks(p.id)
+        prog = projects.progress(p, ms, tasks, now)
+        stall = project_watch.assess(p, ms, tasks, now)
+        out.append(ProjectCard(p.id, p.name, _color(colors, p.id), p.status, _percent(prog), prog.days_left,
+                               prog.current.title if prog.current else None,
+                               prog.next_task.title if prog.next_task else None,
+                               sum(1 for t in tasks if t.status in projects.OPEN), stall is not None,
+                               stall.signals[0].line if stall else None))
+    return sorted(out, key=lambda c: c.status != "active")
+
+
+@dataclass(frozen=True)
+class StepView:
+    step_id: str
+    title: str
+    status: str
+    due: date | None
+    tasks: list[Task]
+    done: int
+    total: int
+
+
+@dataclass(frozen=True)
+class ActionButton:
+    label: str
+    callback: str
+    discuss: bool = False     # la réponse est une suite de conversation : elle s'ouvre dans la Discussion
+
+
+@dataclass(frozen=True)
+class ProjectDetail:
+    project_id: str
+    name: str
+    color: str
+    status: str
+    percent: int
+    days_left: int | None
+    deadline: date | None
+    facts: list[tuple[str, str]]
+    steps: list[StepView]
+    loose: list[Task]
+    suggestions: list[Suggestion]
+    alert_line: str | None
+    actions: list[ActionButton]
+
+
+FACT_LABELS = (("goal", "Objectif"), ("limits", "Limites"), ("deliverables", "Livrables"), ("team", "Équipe"),
+               ("weekly_hours", "Temps par semaine"))
+
+
+def project_detail(db: Database, project_id: str, now: datetime) -> ProjectDetail | None:
+    p = db.get_project(project_id)
+    if p is None:
+        return None
+    ms = sorted(db.list_milestones(p.id), key=lambda m: m.position)
+    tasks = db.list_project_tasks(p.id)
+    prog = projects.progress(p, ms, tasks, now)
+    open_tasks = [t for t in tasks if t.status in projects.OPEN]
+    step_ids = {m.id for m in ms}
+    steps = []
+    for m in ms:
+        mine = [t for t in tasks if t.milestone_id == m.id and t.status != "dropped"]
+        steps.append(StepView(m.id, m.title, m.status, m.due, [t for t in mine if t.status in projects.OPEN],
+                              sum(1 for t in mine if t.status == "done"), len(mine)))
+    loose = [t for t in open_tasks if not t.milestone_id or t.milestone_id not in step_ids]
+    batch = db.pending_batch(p.id)
+    suggestions = [s for s in db.list_batch(batch) if s.state == "proposed"] if batch else []
+    stall = project_watch.assess(p, ms, tasks, now)
+    acts: list[ActionButton] = []
+    if p.status != "done":
+        if prog.current is not None:
+            acts.append(ActionButton("🏁 Étape franchie", f"pm:ok:{prog.current.id}"))
+        acts.append(ActionButton("➕ Étape", f"pm:add:{p.id}", True))
+        acts.append(ActionButton("✏️ Corriger", f"pp:fix:{p.id}", True))
+        if p.status == "active" and prog.current is not None and project_service.rank_candidates(db, p.id):
+            acts.append(ActionButton("🗂 Ranger les tâches", f"pa:rng:{p.id}"))
+        if p.status == "active" and project_service.step_gaps(db, p.id):
+            acts.append(ActionButton("🧩 Créer les tâches des étapes", f"pa:mk:{p.id}"))
+        if p.status == "active":
+            acts.append(ActionButton("💡 Relancer", f"ps:go:{p.id}"))
+        acts.append(ActionButton("⏸ Pause", f"pp:pause:{p.id}") if p.status == "active"
+                    else ActionButton("▶ Reprendre", f"pp:resume:{p.id}"))
+        acts.append(ActionButton("🏁 Terminer", f"pp:end:{p.id}"))
+    return ProjectDetail(p.id, p.name, _color(project_colors(db), p.id), p.status, _percent(prog), prog.days_left,
+                         p.deadline, [(label, str(p.profile[k])) for k, label in FACT_LABELS if p.profile.get(k)],
+                         steps, loose, suggestions, stall.signals[0].line if stall else None, acts)
