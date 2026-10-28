@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Callable
 
+from coach import focus as coach_focus
 from coach import project_watch, projects
 from coach.db import Database
 from coach.models import Task
@@ -351,3 +352,87 @@ def week_summary(db: Database, now: datetime) -> WeekSummary:
     upcoming = sorted((t for t in open_dated if now <= t.due < now + timedelta(days=7)), key=lambda t: t.due)
     return WeekSummary(rows, sum(minutes.values()), len(worked),
                        sum(1 for i in worked if tasks[i].status == "done"), late, upcoming)
+
+
+# --- étape 2 : Focus et Tâches ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class FocusRow:
+    rank: int
+    task_id: str
+    title: str
+    level: str
+    score: float
+    bar: int                  # % du meilleur score
+    reason: str
+    due: datetime | None
+    minutes: int
+    color: str
+
+
+def focus_rows(sched, now: datetime, limit: int = 30) -> list[FocusRow]:
+    ranked = sched.ranking(now)[:limit]
+    if not ranked:
+        return []
+    why = coach_focus.reasons(ranked)                      # raisons calculées : jamais d'appel IA depuis la page web
+    colors = project_colors(sched.db)
+    best = max(r.score for r in ranked) or 1.0
+    return [FocusRow(i, r.task.id, r.task.title, r.level, round(r.score, 1),
+                     max(0, min(100, round(r.score * 100 / best))), why.get(r.task.id, ""), r.task.due,
+                     r.task.estimated_minutes, _color(colors, r.task.project_id))
+            for i, r in enumerate(ranked, 1)]
+
+
+FILTERS = ("tout", "retard", "semaine", "sans-projet")
+
+
+@dataclass(frozen=True)
+class TaskRow:
+    task_id: str
+    title: str
+    status: str
+    due: datetime | None
+    overdue: bool
+    minutes: int
+    step: str | None
+    color: str
+
+
+@dataclass(frozen=True)
+class TaskGroup:
+    name: str
+    color: str
+    project_id: str | None
+    rows: list[TaskRow]
+
+
+def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list[TaskGroup], dict[str, int]]:
+    """Tâches ouvertes regroupées par projet (puis « Sans projet »), et le nombre de tâches pour chaque filtre."""
+    filtre = filtre if filtre in FILTERS else "tout"
+    colors = project_colors(db)
+    steps = {m.id: m.title for p in db.list_projects() for m in db.list_milestones(p.id)}
+    open_tasks = list(db.list_tasks("pending", "scheduled"))
+    names = {p.id: p for p in db.list_projects("active", "paused")}
+
+    def keep(t: Task, f: str) -> bool:
+        if f == "retard":
+            return t.due is not None and t.due < now
+        if f == "semaine":
+            return t.due is not None and now <= t.due < now + timedelta(days=7)
+        if f == "sans-projet":
+            return t.project_id not in names
+        return True
+
+    counts = {f: sum(1 for t in open_tasks if keep(t, f)) for f in FILTERS}
+    groups: list[TaskGroup] = []
+    for p in list(names.values()) + [None]:
+        mine = [t for t in open_tasks if keep(t, filtre)
+                and ((p is not None and t.project_id == p.id) or (p is None and t.project_id not in names))]
+        if not mine:
+            continue
+        rows = [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
+                        steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+                for t in sorted(mine, key=lambda t: (t.due is None, t.due or now, t.title))]
+        groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
+                                p.id if p else None, rows))
+    return groups, counts
