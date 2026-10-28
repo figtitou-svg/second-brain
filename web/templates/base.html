@@ -11,8 +11,8 @@
 <body>
 {% set sections = [
   (None, [("Accueil", "🏠", "/")]),
-  ("Organisation", [("Agenda", "📅", None), ("Focus", "🎯", None), ("Tâches", "☑️", None),
-                    ("Projets", "🍩", None), ("Récap semaine", "📊", None)]),
+  ("Organisation", [("Agenda", "📅", "/agenda"), ("Focus", "🎯", "/focus"), ("Tâches", "☑️", "/taches"),
+                    ("Projets", "🍩", "/projets"), ("Récap semaine", "📊", "/semaine")]),
   ("À traiter", [("À trier", "📥", None), ("Suggestions", "💡", None), ("Notifications", "🔔", None)]),
   ("Mémoire", [("Discussion", "💬", "/discussion"), ("Notes et documents", "🗒️", None)]),
   ("Coulisses", [("Système", "🖥️", "/systeme")]),
@@ -25,7 +25,9 @@
     {% if group %}<div class="group">{{ group }}</div>{% endif %}
     {% for label, icon, href in items %}
       {% if href %}
-      <a class="item{% if path == href %} current{% endif %}" href="{{ href }}" title="{{ label }}"{% if path == href %} aria-current="page"{% endif %}>
+      {# page courante : l'adresse exacte, ou une sous-page (/projets/<id> marque Projets) #}
+      {% set here = path == href or (href != "/" and path.startswith(href ~ "/")) %}
+      <a class="item{% if here %} current{% endif %}" href="{{ href }}" title="{{ label }}"{% if here %} aria-current="page"{% endif %}>
         <span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span></a>
       {% else %}
       <span class="item soon" title="{{ label }}"><span class="icon" aria-hidden="true">{{ icon }}</span><span class="label">{{ label }}</span><small>bientôt</small></span>
@@ -44,8 +46,8 @@
 {% if csrf %}
 <nav class="bottom" aria-label="Raccourcis">
   <a href="/"{% if path == "/" %} aria-current="page"{% endif %}><span aria-hidden="true">🏠</span>Accueil</a>
-  <span class="soon"><span aria-hidden="true">📅</span>Agenda<span class="sr-only"> (à venir)</span></span>
-  <span class="soon"><span aria-hidden="true">☑️</span>Tâches<span class="sr-only"> (à venir)</span></span>
+  <a href="/agenda"{% if path == "/agenda" %} aria-current="page"{% endif %}><span aria-hidden="true">📅</span>Agenda</a>
+  <a href="/taches"{% if path == "/taches" %} aria-current="page"{% endif %}><span aria-hidden="true">☑️</span>Tâches</a>
   <a href="/discussion"{% if path == "/discussion" %} aria-current="page"{% endif %}><span aria-hidden="true">💬</span>Discussion</a>
 </nav>
 {% endif %}

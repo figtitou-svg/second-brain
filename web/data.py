@@ -551,3 +551,47 @@ def project_detail(db: Database, project_id: str, now: datetime) -> ProjectDetai
     return ProjectDetail(p.id, p.name, _color(project_colors(db), p.id), p.status, _percent(prog), prog.days_left,
                          p.deadline, [(label, str(p.profile[k])) for k, label in FACT_LABELS if p.profile.get(k)],
                          steps, loose, suggestions, stall.signals[0].line if stall else None, acts)
+
+
+# --- étape 2 : ce que lisent les pages ---------------------------------------------------------------------
+
+
+class Views:
+    """Ce que lisent les pages « Organisation » : une méthode par page, le temps injectable pour les tests."""
+
+    def __init__(self, db: Database, sched, agenda_cache: AgendaCache, clock: Callable[[], datetime] | None = None
+                 ) -> None:
+        self.db, self.sched, self.agenda_cache = db, sched, agenda_cache
+        self._clock = clock
+
+    def now(self) -> datetime:
+        return (self._clock() if self._clock else self.sched.now()).astimezone(self.sched.tz)
+
+    def agenda(self, day: date | None, vue: str) -> dict:
+        now = self.now()
+        today = now.date()
+        day = day or today
+        if vue == "semaine":
+            monday = week_start(day)
+            return {"vue": "semaine", "day": day, "today": today, "monday": monday,
+                    "days": agenda_week(self.db, self.sched, self.agenda_cache, monday)}
+        return {"vue": "jour", "day": day, "today": today, "now": now,
+                "view": agenda_day(self.db, self.sched, self.agenda_cache, day)}
+
+    def focus(self) -> list[FocusRow]:
+        return focus_rows(self.sched, self.now())
+
+    def tasks(self, filtre: str) -> dict:
+        now = self.now()
+        filtre = filtre if filtre in FILTERS else "tout"
+        groups, counts = task_groups(self.db, now, filtre)
+        return {"groups": groups, "counts": counts, "filtre": filtre, "now": now}
+
+    def projects(self) -> list[ProjectCard]:
+        return project_cards(self.db, self.now())
+
+    def project(self, project_id: str) -> ProjectDetail | None:
+        return project_detail(self.db, project_id, self.now())
+
+    def week(self) -> WeekSummary:
+        return week_summary(self.db, self.now())

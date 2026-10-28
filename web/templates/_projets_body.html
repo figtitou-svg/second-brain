@@ -1,0 +1,5 @@
+{# gabarit minimal (Task 4) : les cartes complètes arrivent en Task 7 #}
+{% if cards %}<ul>{% for p in cards %}
+  <li><a href="/projets/{{ p.project_id }}">{{ p.name }}</a> <span class="muted">{{ p.percent }} %</span></li>
+{% endfor %}</ul>
+{% else %}<p class="muted">Aucun projet.</p>{% endif %}

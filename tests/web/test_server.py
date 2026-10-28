@@ -259,7 +259,7 @@ def test_menu_lists_all_sections_with_future_ones_disabled():
         for name in ("Accueil", "Agenda", "Focus", "Tâches", "Projets", "Récap semaine", "À trier", "Suggestions",
                      "Notifications", "Discussion", "Notes et documents", "Système"):
             assert name in page, name
-        assert page.count("bientôt") == 9          # les 9 sections sans lien du menu latéral
+        assert page.count("bientôt") == 4          # À trier, Suggestions, Notifications, Notes et documents
         assert 'href="/discussion"' in page and 'href="/systeme"' in page
     run(app, scenario)
 

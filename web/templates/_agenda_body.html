@@ -1,0 +1,22 @@
+{# gabarit minimal (Task 4) : la frise et la vue semaine complètes arrivent en Task 5 #}
+{% set jours = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."] %}
+{% macro item(it) %}<li style="--c: {{ it.color }}">{{ it.start.strftime("%Hh%M") }}–{{ it.end.strftime("%Hh%M") }} {{ it.title }}
+  {% if it.block_id %}<span class="actions"><button type="button" data-cb="ok:{{ it.block_id }}">✅ Fait</button><button type="button" data-cb="rep:{{ it.block_id }}">⏭ Reporter</button></span>{% endif %}</li>{% endmacro %}
+{% if agenda.vue == "semaine" %}
+<nav class="daynav" aria-label="Semaines">
+  <a href="/agenda?vue=semaine&amp;jour={{ (agenda.monday - timedelta(days=7)).isoformat() }}">← Semaine précédente</a>
+  <a href="/agenda?vue=semaine&amp;jour={{ (agenda.monday + timedelta(days=7)).isoformat() }}">Semaine suivante →</a>
+</nav>
+{% for d in agenda.days %}
+<h2>{{ jours[d.day.weekday()] }} {{ d.day.day }}</h2>
+<ul>{% for it in d.items %}{{ item(it) }}{% endfor %}</ul>
+{% endfor %}
+{% else %}
+<nav class="daynav" aria-label="Jours">
+  <a href="/agenda?jour={{ (agenda.day - timedelta(days=1)).isoformat() }}">← Veille</a>
+  <a href="/agenda?jour={{ (agenda.day + timedelta(days=1)).isoformat() }}">Lendemain →</a>
+</nav>
+<h2>{{ jours[agenda.day.weekday()] }} {{ agenda.day.day }}</h2>
+{% if agenda.view.items %}<ul>{% for it in agenda.view.items %}{{ item(it) }}{% endfor %}</ul>
+{% else %}<p class="muted">Rien de prévu ce jour-là.</p>{% endif %}
+{% endif %}

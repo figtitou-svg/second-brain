@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Agenda · Second Brain{% endblock %}
+{% block main %}
+<h1>Agenda</h1>
+<section id="agenda" data-refresh="/fragment/agenda?vue={{ agenda.vue }}&amp;jour={{ agenda.day.isoformat() }}">{% include "_agenda_body.html" %}</section>
+{% endblock %}

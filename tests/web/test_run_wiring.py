@@ -28,6 +28,8 @@ def test_web_deps_builds_every_section(tmp_path):
     assert deps.machine().disk_total_gb > 0
     assert any(c.component == "gmail" for c in deps.components())
     assert isinstance(deps.quota(), str)
+    assert deps.views.focus() == [] and deps.views.projects() == []
+    assert deps.views.agenda(None, "jour")["day"] == NOW.date()
 
 
 def test_start_web_never_raises(monkeypatch, caplog):

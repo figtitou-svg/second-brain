@@ -1,0 +1,7 @@
+{# gabarit minimal (Task 4) : en-tête, fiche, frise d'étapes et suggestions complètes en Task 7 #}
+{% for s in project.steps %}
+<h2>{{ s.title }}</h2>
+<ul>{% for t in s.tasks %}<li>{{ t.title }}</li>{% endfor %}</ul>
+{% endfor %}
+{% if project.loose %}<h2>Sans étape</h2><ul>{% for t in project.loose %}<li>{{ t.title }}</li>{% endfor %}</ul>{% endif %}
+<div class="actions">{% for a in project.actions %}<button type="button" data-cb="{{ a.callback }}"{% if a.discuss %} data-discuss="1" data-label="{{ a.label }}"{% endif %}>{{ a.label }}</button>{% endfor %}</div>

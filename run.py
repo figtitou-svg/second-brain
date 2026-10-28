@@ -71,7 +71,8 @@ def web_deps(service: BotService, db: Database, sched: CoachScheduler, hl: healt
         machine=web_system.machine,
         errors=errors,
         components=hl.snapshot,
-        quota=quota.report)
+        quota=quota.report,
+        views=web_data.Views(db, sched, agenda))
 
 
 def start_web(deps: web_server.Deps | None):

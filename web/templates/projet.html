@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · Second Brain{% endblock %}
+{% block main %}
+<p><a href="/projets">← Projets</a></p>
+<h1>{{ project.name }}</h1>
+<section id="projet" data-refresh="/fragment/projets/{{ project.project_id }}">{% include "_projet_body.html" %}</section>
+{% endblock %}

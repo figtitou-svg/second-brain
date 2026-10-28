@@ -1,0 +1,6 @@
+{# gabarit minimal (Task 4) : le classement complet arrive en Task 6 #}
+{% if rows %}<ol>{% for r in rows %}
+  <li>{{ r.title }} <span class="muted">{{ r.reason }}</span>
+    <span class="actions"><button type="button" data-cb="fup:{{ r.task_id }}" aria-label="Monter">⬆</button><button type="button" data-cb="fdn:{{ r.task_id }}" aria-label="Descendre">⬇</button></span></li>
+{% endfor %}</ol>
+{% else %}<p class="muted">Aucune tâche à classer.</p>{% endif %}

@@ -1,0 +1,10 @@
+{# gabarit minimal (Task 4) : pastilles, groupes repliés et mise en forme complète en Task 6 #}
+<nav class="chips" aria-label="Filtres">{% for f, label in [("tout", "Tout"), ("retard", "En retard"), ("semaine", "Cette semaine"), ("sans-projet", "Sans projet")] %}
+  <a href="/taches?filtre={{ f }}">{{ label }} ({{ tasks.counts[f] }})</a>{% endfor %}</nav>
+{% for g in tasks.groups %}
+<h2>{{ g.name }}</h2>
+<ul>{% for t in g.rows %}
+  <li>{{ t.title }}
+    <span class="actions"><button type="button" data-cb="td:{{ t.task_id }}">✅ Fait</button><button type="button" data-cb="plan:{{ t.task_id }}">Planifier</button><button type="button" data-cb="dur:{{ t.task_id }}">Durée</button><button type="button" data-cb="tpo:{{ t.task_id }}">⏭ Demain</button><button type="button" data-cb="tnw:{{ t.task_id }}">📅 Semaine pro.</button><button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Supprimer">🗑</button></span></li>
+{% endfor %}</ul>
+{% else %}<p class="muted">Aucune tâche ouverte.</p>{% endfor %}

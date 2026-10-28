@@ -1,0 +1,3 @@
+{# gabarit minimal (Task 4) : barres, compteurs, retards et échéances complets en Task 5 #}
+{% if week.rows %}<ul>{% for r in week.rows %}<li style="--c: {{ r.color }}">{{ r.name }} : {{ r.minutes }} min</li>{% endfor %}</ul>
+{% else %}<p class="muted">Aucun bloc terminé ces 7 derniers jours.</p>{% endif %}

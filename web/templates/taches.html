@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Tâches · Second Brain{% endblock %}
+{% block main %}
+<h1>Tâches</h1>
+<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}">{% include "_taches_body.html" %}</section>
+{% endblock %}

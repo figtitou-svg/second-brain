@@ -12,6 +12,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass
+from datetime import MAXYEAR, MINYEAR, date, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -39,6 +40,9 @@ SECURITY_HEADERS = {
 }
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _COOKIE_VALUE = re.compile(r"([0-9]{1,12})\.([0-9a-f]{32})\.([0-9a-f]{64})")
+_ISO_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+AGENDA_VUES = ("jour", "semaine")
+PROJECT_NOT_FOUND = "Projet introuvable."
 
 
 @dataclass
@@ -49,6 +53,19 @@ class Deps:
     errors: Any                       # system.ErrorLog
     components: Callable[[], list]    # -> list[health.ComponentState]
     quota: Callable[[], str]          # -> HTML Telegram de /quota
+    views: Any = None                 # data.Views : pages « Organisation » (None : elles sont indisponibles)
+
+
+def parse_day(text: str) -> date | None:
+    """`AAAA-MM-JJ` -> date ; None si absent, mal formé, impossible (30 février) ou trop près des bornes du
+    calendrier (la navigation ±7 jours ne doit jamais déborder)."""
+    if not _ISO_DAY.fullmatch(text or ""):
+        return None
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        return None
+    return day if MINYEAR < day.year < MAXYEAR else None
 
 
 def load_secret(path: Path = SECRET_PATH) -> str:
@@ -79,6 +96,7 @@ def _same(a: str, b: str) -> bool:
 def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float] = time.time) -> web.Application:
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
     env.filters["tg"] = lambda text: Markup(actions.safe_html(text))   # HTML Telegram filtré par safe_html
+    env.globals["timedelta"] = timedelta                                 # navigation jour / semaine de l'Agenda
     discussion = actions.Discussion()
     fails: list[float] = []
 
@@ -203,9 +221,64 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         return page("_exchange.html", request, ex=ex)
 
     async def click(request: web.Request) -> web.Response:
-        data = str((await request.post()).get("data", ""))
+        form = await request.post()
+        data = str(form.get("data", ""))
         reply = await blocking(actions.click, deps.svc, data)
+        if form.get("discuss") == "1":     # réponse qui attend une suite : elle reste dans la Discussion
+            discussion.add(str(form.get("label", "")).strip() or data, [reply])
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
+
+    # --- pages « Organisation » : page entière (erreur dans la mise en page) et fragment nu ---------------
+
+    def organisation(name: str, key: str, method: str,
+                     params: Callable[[web.Request], tuple] = lambda request: ()) -> tuple[Callable, Callable]:
+        """Gestionnaires de `/<name>` et `/fragment/<name>` : `deps.views.<method>(*params(request))` lu dans
+        l'exécuteur ; gabarits `<name>.html` (étend base.html) et `_<name>_body.html` (le corps seul)."""
+        async def handle(request: web.Request, full_page: bool) -> web.Response:
+            if deps.views is None:
+                return error_page(request) if full_page else error_fragment(request)
+            fn, args = getattr(deps.views, method), params(request)   # paramètres lus ici, pas dans l'exécuteur
+            template = f"{name}.html" if full_page else f"_{name}_body.html"
+            return await section(request, template, lambda: fn(*args), key, full_page=full_page)
+
+        async def full(request: web.Request) -> web.Response:
+            return await handle(request, True)
+
+        async def fragment(request: web.Request) -> web.Response:
+            return await handle(request, False)
+        return full, fragment
+
+    def agenda_params(request: web.Request) -> tuple:
+        vue = request.query.get("vue", "jour")      # valeur invalide -> valeur par défaut, jamais réaffichée
+        return parse_day(request.query.get("jour", "")), vue if vue in AGENDA_VUES else "jour"
+
+    pages = {
+        "agenda": organisation("agenda", "agenda", "agenda", agenda_params),
+        "focus": organisation("focus", "rows", "focus"),
+        "taches": organisation("taches", "tasks", "tasks", lambda request: (request.query.get("filtre", "tout"),)),
+        "projets": organisation("projets", "cards", "projects"),
+        "semaine": organisation("semaine", "week", "week"),
+    }
+
+    async def project(request: web.Request, full_page: bool) -> web.Response:
+        fail = error_page if full_page else error_fragment
+        if deps.views is None:
+            return fail(request)
+        try:
+            value = await blocking(deps.views.project, request.match_info["id"])
+            if value is None:
+                return page("error.html" if full_page else "_error.html", request, status=404,
+                            message=PROJECT_NOT_FOUND)
+            return page("projet.html" if full_page else "_projet_body.html", request, project=value)
+        except Exception:  # noqa: BLE001 - une section en panne n'empêche pas les autres
+            log.exception("section web projet illisible")
+            return fail(request)
+
+    async def project_page(request: web.Request) -> web.Response:
+        return await project(request, True)
+
+    async def project_fragment(request: web.Request) -> web.Response:
+        return await project(request, False)
 
     async def security_headers(request: web.Request, response: web.StreamResponse) -> None:
         for name, value in SECURITY_HEADERS.items():
@@ -218,6 +291,10 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         web.get("/", protected(home)), web.get("/fragment/home", protected(home_fragment)),
         web.get("/discussion", protected(discussion_page)), web.get("/systeme", protected(system_page)),
         web.post("/say", protected(say)), web.post("/click", protected(click)),
+        *[route for name, (full, fragment) in pages.items()
+          for route in (web.get(f"/{name}", protected(full)), web.get(f"/fragment/{name}", protected(fragment)))],
+        web.get("/projets/{id}", protected(project_page)),
+        web.get("/fragment/projets/{id}", protected(project_fragment)),
         web.static("/static", HERE / "static"),
     ])
     return app

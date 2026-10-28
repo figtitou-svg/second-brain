@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Récap semaine · Second Brain{% endblock %}
+{% block main %}
+<h1>Récap semaine</h1>
+<section id="semaine" data-refresh="/fragment/semaine">{% include "_semaine_body.html" %}</section>
+{% endblock %}
