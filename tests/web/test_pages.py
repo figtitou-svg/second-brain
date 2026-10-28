@@ -666,3 +666,28 @@ def test_paused_project_card_names_are_h3_under_paused_heading():
         assert re.search(r'<h2 class="pc-name">Actif', text)
         assert re.search(r'<h3 class="pc-name">Vieux', text) and '<h2 class="pc-name">Vieux' not in text
     run(app, scenario)
+
+
+def test_refreshed_fragments_keep_the_focus_anchors_of_the_page():
+    """app.js retrouve le focus après un rechargement forcé par data-cb (dans la section id=…), rouvre le
+    <details data-gkey> qui l'entoure, et retombe sur le h1 de la page : ces repères doivent être stables."""
+    app, db = make()
+    p, _, _ = _detail_project(db)
+    db.upsert_task(Task(title="Sans projet", due=NOW + timedelta(days=1)))
+
+    async def scenario(c):
+        await login(c)
+        for url, sid in (("/taches", "taches"), (f"/projets/{p.id}", "projet"), ("/focus", "focus")):
+            page = await (await c.get(url)).text()
+            frag = await (await c.get(f"/fragment{url}")).text()
+            assert re.search(rf'<section id="{sid}" data-refresh="/fragment{url}', page), url
+            assert re.search(r"<main[^>]*>\s*(<p[^>]*>.*?</p>\s*)?<h1>", page, re.S), url
+            cbs = re.findall(r'data-cb="([^"]+)"', frag)
+            section = page.split(f'<section id="{sid}"')[1]
+            assert cbs and cbs == re.findall(r'data-cb="([^"]+)"', section), url    # mêmes boutons, même ordre
+            assert len(set(cbs)) == len(cbs), url                       # chaque data-cb désigne un seul bouton
+            assert re.findall(r'data-gkey="([^"]+)"', frag) == re.findall(r'data-gkey="([^"]+)"', section), url
+        taches = await (await c.get("/fragment/taches")).text()
+        keys = re.findall(r'data-gkey="([^"]+)"', taches)
+        assert "sans-projet" in keys and p.id in keys and sum(k.startswith("t:") for k in keys) == 3
+    run(app, scenario)

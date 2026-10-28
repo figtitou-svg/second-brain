@@ -17,12 +17,14 @@
 
   // html vient du serveur (gabarits échappés, HTML Telegram filtré) ; text=true pour un message local.
   // Une réponse qui porte des boutons ([data-cb], ex. les choix de durée) reste affichée jusqu'au clic ou à ✕.
-  // Focus : un bandeau à boutons reçoit le focus sur son premier choix ; à la fermeture (✕, Échap, ou choix
-  // fait sans nouvelle question) le focus revient à l'élément qui l'avait ouvert, s'il est encore là.
-  function show(content, text) {
+  // Focus : un bandeau à boutons reçoit le focus sur son premier choix ; à la fermeture (✕, Échap) le focus
+  // revient à l'élément qui l'avait ouvert (ou à son remplaçant). origin : l'élément déclencheur, KEEP pour
+  // garder celui déjà retenu (choix fait dans le bandeau), absent : l'élément qui a le focus.
+  const KEEP = {};
+  function show(content, text, origin) {
     if (!content || !content.trim()) return;   // réponse vide : le bandeau n'est pas touché
-    const fromToast = !toast.hidden && (toast.contains(document.activeElement) || document.activeElement === document.body);
-    if (!fromToast) rememberOrigin(document.activeElement);
+    const inToast = !toast.hidden && toast.contains(document.activeElement);
+    if (origin !== KEEP && !(origin === undefined && inToast)) rememberOrigin(origin || document.activeElement);
     if (text) toast.textContent = content; else toast.innerHTML = content;
     const close = document.createElement("button");
     close.type = "button";
@@ -35,25 +37,69 @@
     const first = toast.querySelector("[data-cb]");
     if (first) { first.focus(); return; }
     show.t = setTimeout(() => hideToast(false), 6000);
-    if (fromToast) restoreFocus();
   }
 
   function rememberOrigin(el) {
-    show.origin = el && el !== document.body ? el : null;
-    show.originCb = show.origin?.dataset?.cb || null;
+    const ok = el && el !== document.body && el.isConnected && !toast.contains(el);
+    show.origin = ok ? el : null;
+    show.anchor = ok ? describeAnchor(el) : null;
   }
 
-  // l'élément d'origine, ou celui qui le remplace après un rechargement de section (même data-cb)
-  function restoreFocus() {
-    let el = show.origin;
-    if (!el || !el.isConnected) {
-      el = null;
-      if (show.originCb) for (const b of document.querySelectorAll("[data-cb]")) {
-        if (b.dataset.cb === show.originCb && !toast.contains(b)) { el = b; break; }
-      }
+  // --- focus après un rechargement de section -------------------------------------------------------------
+  // Un rechargement forcé remplace les boutons : on décrit l'élément (data-cb, puis les data-cb qui le suivent
+  // dans sa section) AVANT, et on retrouve APRÈS le même bouton, sinon le suivant encore présent, sinon le titre.
+
+  // pure : bouton à cibler (indice dans buttons, ou -1).
+  // anchor = {cb, next: [cb…]} ; buttons = [{cb, reachable}] dans l'ordre du document
+  function pickFocus(anchor, buttons) {
+    if (!anchor) return -1;
+    const same = buttons.findIndex((b) => b.cb === anchor.cb);
+    if (same >= 0) return same;                       // même bouton : ses <details> seront rouverts
+    for (const cb of anchor.next) {
+      const i = buttons.findIndex((b) => b.cb === cb && b.reachable);
+      if (i >= 0) return i;
     }
-    el?.focus?.();
+    return -1;
   }
+
+  function describeAnchor(el) {
+    const cb = el?.dataset?.cb;
+    if (!cb) return null;
+    const scope = el.closest("[data-refresh]") || document;
+    const all = [...scope.querySelectorAll("[data-cb]")];
+    return {cb, next: all.slice(all.indexOf(el) + 1).map((b) => b.dataset.cb), section: scope.id || null};
+  }
+
+  // atteignable : aucun <details> fermé autour
+  function reachable(el) {
+    for (let d = el.parentElement?.closest("details"); d; d = d.parentElement?.closest("details")) {
+      if (!d.open) return false;
+    }
+    return true;
+  }
+
+  function focusAnchor(anchor, original) {
+    if (original && original.isConnected && !original.disabled) { original.focus(); return; }
+    if (!anchor) return;
+    const scope = (anchor.section && document.getElementById(anchor.section)) || document;
+    const els = [...scope.querySelectorAll("[data-cb]")].filter((b) => !toast.contains(b));
+    const i = pickFocus(anchor, els.map((b) => ({cb: b.dataset.cb, reachable: reachable(b)})));
+    if (i >= 0) {
+      const el = els[i];
+      for (let d = el.parentElement?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
+      el.focus();
+      return;
+    }
+    const h = document.querySelector("main h1");    // plus rien après : le titre de la page
+    if (h) { h.setAttribute("tabindex", "-1"); h.focus(); }
+  }
+
+  function focusLost() {
+    const a = document.activeElement;
+    return !a || a === document.body || !a.isConnected;
+  }
+
+  function restoreFocus() { focusAnchor(show.anchor, show.origin); }
 
   function hideToast(restore) {
     clearTimeout(show.t);
@@ -92,28 +138,34 @@
     return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
   }
 
-  async function refresh(force) {
-    if (refresh.busy) { if (force) refresh.again = true; return; }   // jamais deux rechargements en même temps
-    refresh.busy = true;
-    try {
-      for (const el of document.querySelectorAll("[data-refresh]")) {
-        if (inUse(el, force)) continue;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 10000);
-        try {
-          const r = await fetch(el.dataset.refresh, {credentials: "same-origin", signal: ctrl.signal});
-          if (r.redirected || r.status === 401) { location.href = "/login"; return; }
-          if (r.ok) {
-            const html = await r.text();
-            if (!inUse(el, force)) replaceKeepingFolds(el, html);
-            offline.hidden = true;
-          }
-        } catch (e) { offline.hidden = false; }
-        finally { clearTimeout(timer); }
-      }
-    } finally {
-      refresh.busy = false;
-      if (refresh.again) { refresh.again = false; refresh(true); }
+  // jamais deux rechargements en même temps : un appel pendant un rechargement reçoit la même promesse, et un
+  // appel forcé ajoute un passage ; la promesse n'est tenue qu'une fois tous les passages finis (DOM à jour)
+  function refresh(force) {
+    if (refresh.running) { if (force) refresh.again = true; return refresh.running; }
+    refresh.running = (async () => {
+      try {
+        await refreshOnce(force);
+        while (refresh.again) { refresh.again = false; await refreshOnce(true); }
+      } finally { refresh.running = null; refresh.again = false; }
+    })();
+    return refresh.running;
+  }
+
+  async function refreshOnce(force) {
+    for (const el of document.querySelectorAll("[data-refresh]")) {
+      if (inUse(el, force)) continue;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      try {
+        const r = await fetch(el.dataset.refresh, {credentials: "same-origin", signal: ctrl.signal});
+        if (r.redirected || r.status === 401) { location.href = "/login"; return; }
+        if (r.ok) {
+          const html = await r.text();
+          if (!inUse(el, force)) replaceKeepingFolds(el, html);
+          offline.hidden = true;
+        }
+      } catch (e) { offline.hidden = false; }
+      finally { clearTimeout(timer); }
     }
   }
 
@@ -132,12 +184,17 @@
     if (cb) {
       ev.preventDefault();
       if (cb.disabled) return;
+      const inToast = toast.contains(cb);
+      // décrit avant le clic : une fois désactivé le bouton peut perdre le focus, puis disparaître au rechargement
+      const hadFocus = document.activeElement === cb || inToast;
+      const anchor = inToast ? show.anchor : describeAnchor(cb);
+      const original = inToast ? show.origin : cb;
       cb.disabled = true;
       if (cb.dataset.discuss === "1") {
         // suite de conversation : la réponse est rangée dans la Discussion, on y va
         const label = (cb.dataset.label || cb.textContent || "").trim();
         const html = await post("/click", {data: cb.dataset.cb, discuss: "1", label});
-        if (html === null || !html.trim() || failed(html)) { cb.disabled = false; show(html); return; }
+        if (html === null || !html.trim() || failed(html)) { cb.disabled = false; show(html, false, cb); return; }
         location.href = "/discussion";     // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
@@ -152,8 +209,9 @@
         const fresh = tpl.content.querySelectorAll(".reply");
         if (fresh.length) { reply.replaceWith(...fresh); return; }
       }
-      show(html);
-      refresh(true);
+      show(html, false, inToast ? KEEP : cb);
+      await refresh(true);                      // DOM remplacé : le focus se rétablit seulement maintenant
+      if (hadFocus && focusLost()) focusAnchor(anchor, original);
     } else if (sy) {
       ev.preventDefault();
       const goto = sy.dataset.goto;
@@ -162,7 +220,7 @@
         if (sy.disabled) return;
         sy.disabled = true;
         const html = await post("/say", {text: sy.dataset.say});
-        if (html === null || !html.trim() || failed(html)) { sy.disabled = false; show(html); return; }
+        if (html === null || !html.trim() || failed(html)) { sy.disabled = false; show(html, false, sy); return; }
         location.href = goto;              // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
@@ -203,9 +261,10 @@
   scrim?.addEventListener("click", () => setMenu(false));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    // le tiroir d'abord (il est au premier plan), le bandeau à l'Échap suivant ; jamais pendant la saisie
+    if (nav?.classList.contains("open")) { setMenu(false); return; }
     const typing = e.target.closest?.("input, textarea, select, .composer");
     if (!toast.hidden && !typing) hideToast(true);
-    else setMenu(false);
   });
 
   // compte à rebours de l'anneau, chaque minute, sans appel au serveur
