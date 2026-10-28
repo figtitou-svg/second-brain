@@ -237,7 +237,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         data = str(form.get("data", ""))
         reply = await blocking(actions.click, deps.svc, data)
         if form.get("discuss") == "1":     # réponse qui attend une suite : elle reste dans la Discussion
-            discussion.add(str(form.get("label", "")).strip() or data, [reply])
+            discussion.add(str(form.get("label", "")).strip()[:200] or data, [reply])
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
 
     # --- pages « Organisation » : page entière (erreur dans la mise en page) et fragment nu ---------------

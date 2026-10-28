@@ -1,7 +1,94 @@
-{# gabarit minimal (Task 4) : en-tête, fiche, frise d'étapes et suggestions complètes en Task 7 #}
-{% for s in project.steps %}
-<h2>{{ s.title }}</h2>
-<ul>{% for t in s.tasks %}<li>{{ t.title }}</li>{% endfor %}</ul>
-{% endfor %}
-{% if project.loose %}<h2>Sans étape</h2><ul>{% for t in project.loose %}<li>{{ t.title }}</li>{% endfor %}</ul>{% endif %}
-<div class="actions">{% for a in project.actions %}<button type="button" data-cb="{{ a.callback }}"{% if a.discuss %} data-discuss="1" data-label="{{ a.label }}"{% endif %}>{{ a.label }}</button>{% endfor %}</div>
+{# Détail d'un projet : en-tête (anneau, %, rendu, alerte), fiche, frise des étapes avec leurs tâches ouvertes,
+   « Sans étape », suggestions en attente (projet actif seulement : le bot refuse ps:* sur un projet en pause),
+   barre d'actions. Couleur (--c) interne ; titres, noms, fiche et suggestions échappés. #}
+{% set p = project %}
+{% macro task_row(t) %}
+<li class="ptask">
+  <p class="ptitle">{{ t.title }}</p>
+  {% if t.due or t.estimated_minutes %}<p class="meta">
+    {% if t.due %}<span>⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>{% endif %}
+    <span>⏱ {{ t.estimated_minutes|dur }}</span>
+    {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}</p>{% endif %}
+  <div class="row-actions">
+    <button type="button" class="primary" data-cb="td:{{ t.id }}" aria-label="Fait : {{ t.title }}">✅ Fait</button>
+    <button type="button" data-cb="tpo:{{ t.id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
+    <button type="button" data-cb="tnw:{{ t.id }}" aria-label="Semaine pro. : {{ t.title }}">📅 Semaine pro.</button>
+  </div>
+</li>
+{% endmacro %}
+<div class="pdetail" style="--c: {{ p.color }}">
+<header class="phead">
+  <svg class="pring-svg big-ring" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="track"/>
+    {% if p.percent > 0 %}<circle cx="32" cy="32" r="26" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - p.percent }}"/>{% endif %}
+    <text x="32" y="37" class="mid">{{ p.percent }}%</text>
+    {% if p.alert_line %}<circle cx="54" cy="10" r="6" class="alert"/>{% endif %}</svg>
+  <div class="pbody">
+    <p class="pstat"><b>{{ p.percent }} %</b> <span class="muted">avancement</span>
+      {% if p.status == "paused" %}<span class="lvl">⏸ En pause</span>{% elif p.status == "done" %}<span class="lvl">🏁 Terminé</span>{% endif %}</p>
+    <p class="meta">
+      {% if p.deadline %}<span>⚑ Rendu {{ p.deadline|fr_day }}</span>{% endif %}
+      {% if p.days_left is none %}<span>Sans échéance</span>
+      {% elif p.days_left < 0 %}<span class="alert-text">Échéance passée</span>
+      {% else %}<span>J-{{ p.days_left }}</span>{% endif %}</p>
+    {% if p.alert_line %}<p class="pline alert-text" role="note">● {{ p.alert_line }}</p>{% endif %}
+  </div>
+</header>
+
+{% if p.actions %}
+<div class="pactions" aria-label="Actions du projet" role="group">
+  {% for a in p.actions %}<button type="button" data-cb="{{ a.callback }}"{% if a.discuss %} data-discuss="1" data-label="{{ a.label }}"{% endif %}>{{ a.label }}</button>{% endfor %}
+</div>
+{% endif %}
+
+{% if p.facts %}
+<section class="card" aria-labelledby="fiche-h">
+  <h2 id="fiche-h">Fiche</h2>
+  <dl class="pfacts">{% for label, value in p.facts %}<div><dt class="muted">{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+</section>
+{% endif %}
+
+{% if p.status == "active" and p.suggestions %}
+<section class="card suggestions" aria-labelledby="sugg-h">
+  <h2 id="sugg-h">💡 Suggestions en attente</h2>
+  <ul class="plist">{% for s in p.suggestions %}
+    <li class="ptask">
+      <p class="ptitle">{{ s.title }} <span class="muted">· ⏱ {{ s.estimated_minutes|dur }}</span></p>
+      <div class="row-actions">
+        <button type="button" class="primary" data-cb="ps:add:{{ s.id }}" aria-label="Ajouter : {{ s.title }}">➕ Ajouter</button>
+        <button type="button" data-cb="ps:plan:{{ s.id }}" aria-label="Planifier : {{ s.title }}">📌 Planifier</button>
+        <button type="button" data-cb="ps:no:{{ s.id }}" aria-label="Non : {{ s.title }}">✖ Non</button>
+      </div>
+    </li>{% endfor %}</ul>
+</section>
+{% endif %}
+
+<section aria-labelledby="steps-h">
+  <h2 id="steps-h" class="muted">Étapes</h2>
+  {% if p.steps %}
+  {% set ns = namespace(current=false) %}
+  <ol class="steps">{% for s in p.steps %}
+    {% if s.status == "done" %}{% set state = "done" %}{% elif not ns.current %}{% set state = "current" %}{% set ns.current = true %}{% else %}{% set state = "todo" %}{% endif %}
+    <li class="step {{ state }}"{% if state == "current" %} aria-current="step"{% endif %}>
+      <span class="mark" aria-hidden="true">{% if state == "done" %}✅{% elif state == "current" %}⏳{% else %}○{% endif %}</span>
+      <div class="sbody">
+        <h3 class="stitle">{{ s.title }}
+          <span class="sr-only">({% if state == "done" %}faite{% elif state == "current" %}en cours{% else %}à venir{% endif %})</span></h3>
+        <p class="meta">
+          {% if s.due %}<span>⚑ {{ s.due|fr_day_short }}</span>{% endif %}
+          {% if s.total %}<span>{{ s.done }}/{{ s.total }} tâche{{ "s" if s.total > 1 }}</span>{% else %}<span>Aucune tâche</span>{% endif %}</p>
+        {% if s.total %}<div class="gbar" aria-hidden="true"><i style="width: {{ (s.done * 100 // s.total) }}%"></i></div>{% endif %}
+        {% if s.tasks %}<ul class="plist">{% for t in s.tasks %}{{ task_row(t) }}{% endfor %}</ul>{% endif %}
+      </div>
+    </li>{% endfor %}</ol>
+  {% else %}
+  <p class="muted empty-state">Aucune étape pour l'instant.</p>
+  {% endif %}
+</section>
+
+{% if p.loose %}
+<section aria-labelledby="loose-h">
+  <h2 id="loose-h" class="muted">Sans étape</h2>
+  <ul class="plist loose">{% for t in p.loose %}{{ task_row(t) }}{% endfor %}</ul>
+</section>
+{% endif %}
+</div>

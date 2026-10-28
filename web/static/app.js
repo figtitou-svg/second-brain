@@ -15,19 +15,45 @@
     } catch (e) { offline.hidden = false; return null; }
   }
 
-  // html vient du serveur (gabarits échappés, HTML Telegram filtré) ; text=true pour un message local
+  // html vient du serveur (gabarits échappés, HTML Telegram filtré) ; text=true pour un message local.
+  // Une réponse qui porte des boutons ([data-cb], ex. les choix de durée) reste affichée jusqu'au clic ou à ✕.
   function show(content, text) {
     if (!content || !content.trim()) return;   // réponse vide : le bandeau n'est pas touché
     if (text) toast.textContent = content; else toast.innerHTML = content;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "x";
+    close.setAttribute("aria-label", "Fermer");
+    close.textContent = "✕";
+    toast.prepend(close);
     toast.hidden = false;
     clearTimeout(show.t);
-    show.t = setTimeout(() => { toast.hidden = true; }, 6000);
+    if (!toast.querySelector("[data-cb]")) show.t = setTimeout(hideToast, 6000);
+  }
+
+  function hideToast() {
+    clearTimeout(show.t);
+    toast.hidden = true;
   }
 
   // une section n'est pas remplacée pendant qu'on s'en sert : focus clavier dedans ou clic en attente ;
   // force (après une action de l'utilisateur) ignore seulement le focus, resté sur le bouton cliqué
   function inUse(el, force) {
     return (!force && el.contains(document.activeElement)) || el.querySelector("[data-cb]:disabled") !== null;
+  }
+
+  // les groupes repliables (<details data-gkey>) gardent leur état replié d'un rechargement à l'autre
+  function replaceKeepingFolds(el, html) {
+    const closed = new Set();
+    for (const d of el.querySelectorAll("details[data-gkey]")) if (!d.open) closed.add(d.dataset.gkey);
+    el.innerHTML = html;
+    if (!closed.size) return;
+    for (const d of el.querySelectorAll("details[data-gkey]")) if (closed.has(d.dataset.gkey)) d.open = false;
+  }
+
+  // adresse interne seulement (« /chemin », jamais « //hôte » ni « https:… »)
+  function internal(url) {
+    return typeof url === "string" && url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
   }
 
   async function refresh(force) {
@@ -43,7 +69,7 @@
           if (r.redirected || r.status === 401) { location.href = "/login"; return; }
           if (r.ok) {
             const html = await r.text();
-            if (!inUse(el, force)) el.innerHTML = html;
+            if (!inUse(el, force)) replaceKeepingFolds(el, html);
             offline.hidden = true;
           }
         } catch (e) { offline.hidden = false; }
@@ -64,12 +90,21 @@
   }
 
   document.addEventListener("click", async (ev) => {
+    if (ev.target.closest("#toast > .x")) { hideToast(); return; }
     const cb = ev.target.closest("[data-cb]");
     const sy = ev.target.closest("[data-say]");
     if (cb) {
       ev.preventDefault();
       if (cb.disabled) return;
       cb.disabled = true;
+      if (cb.dataset.discuss === "1") {
+        // suite de conversation : la réponse est rangée dans la Discussion, on y va
+        const label = (cb.dataset.label || cb.textContent || "").trim();
+        const html = await post("/click", {data: cb.dataset.cb, discuss: "1", label});
+        cb.disabled = false;
+        if (html !== null) location.href = "/discussion";
+        return;
+      }
       const html = await post("/click", {data: cb.dataset.cb});
       cb.disabled = false;
       if (html === null) return;
@@ -85,6 +120,16 @@
       refresh(true);
     } else if (sy) {
       ev.preventDefault();
+      const goto = sy.dataset.goto;
+      if (internal(goto) && !document.querySelector("#thread")) {
+        // « Nouveau projet » : la commande part, la conversation continue dans la Discussion
+        if (sy.disabled) return;
+        sy.disabled = true;
+        const html = await post("/say", {text: sy.dataset.say});
+        sy.disabled = false;
+        if (html !== null) location.href = goto;
+        return;
+      }
       say(sy.dataset.say, document.querySelector("#thread") ? "#thread" : null);
     }
   });
@@ -120,7 +165,11 @@
   }
   toggle?.addEventListener("click", () => setMenu(!nav.classList.contains("open")));
   scrim?.addEventListener("click", () => setMenu(false));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (nav?.classList.contains("open")) setMenu(false);
+    else if (!toast.hidden) hideToast();
+  });
 
   // compte à rebours de l'anneau, chaque minute, sans appel au serveur
   // (nombre, arc et libellé lu par les lecteurs d'écran ; l'arc disparaît à 0, comme côté serveur)

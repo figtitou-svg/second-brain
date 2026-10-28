@@ -1,5 +1,43 @@
-{# gabarit minimal (Task 4) : les cartes complètes arrivent en Task 7 #}
-{% if cards %}<ul>{% for p in cards %}
-  <li><a href="/projets/{{ p.project_id }}">{{ p.name }}</a> <span class="muted">{{ p.percent }} %</span></li>
-{% endfor %}</ul>
-{% else %}<p class="muted">Aucun projet.</p>{% endif %}
+{# Projets : cartes des projets actifs, puis ceux en pause (grisés). Couleurs (--c) internes ; noms échappés.
+   L'anneau n'a pas d'arc à 0 % (un trait rond de longueur nulle laisserait un point). #}
+{% macro when(p) -%}
+{% if p.days_left is none %}sans échéance{% elif p.days_left < 0 %}échéance passée{% else %}J-{{ p.days_left }}{% endif %}
+{%- endmacro %}
+{% macro card(p) %}
+<li class="pcard{% if p.status != 'active' %} off{% endif %}{% if p.alert %} has-alert{% endif %}" style="--c: {{ p.color }}">
+  <a href="/projets/{{ p.project_id }}">
+    <svg class="pring-svg" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="track"/>
+      {% if p.percent > 0 %}<circle cx="32" cy="32" r="26" class="arc" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - p.percent }}"/>{% endif %}
+      <text x="32" y="37" class="mid">{{ p.percent }}%</text>
+      {% if p.alert %}<circle cx="54" cy="10" r="6" class="alert"/>{% endif %}</svg>
+    <div class="pbody">
+      <h2 class="pc-name">{{ p.name }}<span class="sr-only">, {{ p.percent }} %</span></h2>
+      {% if p.step %}<p class="pline"><span class="muted">Étape :</span> {{ p.step }}</p>{% endif %}
+      {% if p.next_task %}<p class="pline"><span class="muted">Ensuite :</span> {{ p.next_task }}</p>{% endif %}
+      <p class="meta"><span{% if p.days_left is not none and p.days_left < 0 %} class="alert-text"{% endif %}>⚑ {{ when(p) }}</span>
+        <span>{{ p.open_tasks }} tâche{{ "s" if p.open_tasks > 1 }} ouverte{{ "s" if p.open_tasks > 1 }}</span>
+        {% if p.status == "paused" %}<span>⏸ En pause</span>{% endif %}</p>
+      {% if p.alert and p.alert_line %}<p class="pline alert-text">● {{ p.alert_line }}</p>{% endif %}
+    </div>
+  </a>
+</li>
+{% endmacro %}
+<div class="toolbar">
+  <button type="button" class="primary" data-say="/projet" data-goto="/discussion">➕ Nouveau projet</button>
+</div>
+{% set active = cards|selectattr("status", "equalto", "active")|list %}
+{% set paused = cards|rejectattr("status", "equalto", "active")|list %}
+{% if not cards %}
+<p class="muted empty-state">Aucun projet. Crée-le avec « Nouveau projet ».</p>
+{% endif %}
+{% if active %}
+<ul class="pcards">{% for p in active %}{{ card(p) }}{% endfor %}</ul>
+{% elif paused %}
+<p class="muted empty-state">Aucun projet actif.</p>
+{% endif %}
+{% if paused %}
+<section class="paused-projects" aria-labelledby="paused-h">
+  <h2 id="paused-h" class="muted">En pause</h2>
+  <ul class="pcards">{% for p in paused %}{{ card(p) }}{% endfor %}</ul>
+</section>
+{% endif %}

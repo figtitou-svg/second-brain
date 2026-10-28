@@ -7,7 +7,7 @@
   {% endfor %}
 </nav>
 {% for g in tasks.groups %}
-<details class="tgroup" open style="--c: {{ g.color }}">
+<details class="tgroup" open data-gkey="{{ g.project_id or 'sans-projet' }}" style="--c: {{ g.color }}">
   <summary><span class="dot" aria-hidden="true"></span><span class="gname">{{ g.name }}</span>
     <span class="n">{{ g.rows|length }} tâche{{ "s" if g.rows|length > 1 }}</span></summary>
   <ul class="cards task-list">
@@ -27,7 +27,7 @@
       <div class="row-actions secondary">
         <button type="button" data-cb="dur:{{ t.task_id }}" aria-label="Durée : {{ t.title }}">⏱ Durée</button>
         <button type="button" data-cb="tpo:{{ t.task_id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
-        <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine pro.</button>
+        <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine pro. : {{ t.title }}">📅 Semaine pro.</button>
         <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Ignorer : {{ t.title }}">🗑 Ignorer</button>
       </div>
     </li>

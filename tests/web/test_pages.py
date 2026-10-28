@@ -8,7 +8,7 @@ from bot.fakes import FakeCoach, FakeMemory, FakeRouter
 from bot.handlers import BotService, Reply
 from coach.calendar_client import FakeCalendarClient
 from coach.db import Database
-from coach.models import Milestone, Project, Task
+from coach.models import Milestone, Project, Suggestion, Task
 from coach.rules import load_rules
 from coach.scheduler import CoachScheduler
 from tests.coach.conftest import FROZEN, dt
@@ -413,4 +413,151 @@ def test_tasks_page_marks_overdue_rows_active_chip_and_escapes_titles():
         assert "&lt;b&gt;x&lt;/b&gt;" in empty                 # la tâche sans projet
         frag = await (await c.get("/fragment/taches?filtre=semaine")).text()
         assert 'id="nav"' not in frag and 'href="/taches?filtre=semaine" aria-current="true"' in frag
+    run(app, scenario)
+
+
+# --- Task 7 : projets, détail, JavaScript -------------------------------------------------------------------
+
+
+def test_projects_list_empty_state_and_new_project_button():
+    app, _ = make()
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/projets")).text()
+        assert "Aucun projet. Crée-le avec « Nouveau projet »." in text
+        assert re.search(r'<button[^>]*data-say="/projet"[^>]*data-goto="/discussion"[^>]*>[^<]*Nouveau projet', text)
+        assert 'class="pcard' not in text
+    run(app, scenario)
+
+
+def test_project_cards_ring_without_arc_at_zero_paused_below_and_alert():
+    app, db = make()
+    fresh = Project(name="<b>Neuf</b>", last_activity=NOW)
+    stalled = Project(name="Stagne", last_activity=NOW - timedelta(days=12))
+    paused = Project(name="Vieux", status="paused", last_activity=NOW)
+    for p in (fresh, stalled, paused):
+        db.save_project(p)
+    m = Milestone(project_id=stalled.id, title="Données", position=0, status="done")
+    db.save_milestone(m)
+    db.save_milestone(Milestone(project_id=stalled.id, title="Modèle", position=1))
+    db.upsert_task(Task(title="Nettoyer", project_id=stalled.id))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/projets")).text()
+        cards = text.split('<li class="pcard')[1:]
+        assert len(cards) == 3
+        neuf = next(x for x in cards if "&lt;b&gt;Neuf&lt;/b&gt;" in x)
+        stag = next(x for x in cards if "Stagne" in x)
+        vieux = next(x for x in cards if "Vieux" in x)
+        assert 'class="arc"' not in neuf and "0%" in neuf and f'href="/projets/{fresh.id}"' in neuf
+        assert 'class="arc"' in stag and "50%" in stag and "Étape :</span> Modèle" in stag
+        assert "Nettoyer" in stag and "1 tâche ouverte" in stag
+        assert stag.startswith(' has-alert"') and 'class="alert"' in stag and "12" in stag.split("alert-text")[-1]
+        assert 'class="alert"' not in neuf and "sans échéance" in neuf
+        assert vieux.startswith(' off"') and "En pause" in vieux
+        assert text.index("Vieux") > text.index('id="paused-h"') > text.index("Stagne")
+        assert "<b>Neuf</b>" not in text
+        frag = await (await c.get("/fragment/projets")).text()
+        assert 'id="nav"' not in frag and frag.count('<li class="pcard') == 3
+    run(app, scenario)
+
+
+def _detail_project(db, **kw):
+    p = Project(name="Projet IA", last_activity=NOW, deadline=(NOW + timedelta(days=20)).date(),
+                profile={"goal": "Entraîner <un> modèle"}, **kw)
+    db.save_project(p)
+    ms = [Milestone(project_id=p.id, title=t, position=i, status=s)
+          for i, (t, s) in enumerate([("Données", "done"), ("Modèle", "open"), ("Rapport", "open")])]
+    for m in ms:
+        db.save_milestone(m)
+    db.upsert_task(Task(title="[IA] Entraîner", project_id=p.id, milestone_id=ms[1].id))
+    db.upsert_task(Task(title="[IA] Vrac", project_id=p.id))
+    db.save_suggestions([Suggestion(batch="b1", project_id=p.id, title="Idée <i>neuve</i>", created_at=NOW)])
+    return p, ms, db.list_batch("b1")[0]
+
+
+def test_project_detail_header_facts_timeline_loose_suggestions_and_actions():
+    app, db = make()
+    p, ms, s = _detail_project(db)
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get(f"/projets/{p.id}")).text()
+        assert '<a href="/projets">← Projets</a>' in text and "33 %" in text and "J-20" in text
+        assert "Objectif" in text and "Entraîner &lt;un&gt; modèle" in text
+        steps = text.split('<li class="step ')[1:]
+        assert [x.split('"')[0] for x in steps] == ["done", "current", "todo"]
+        assert "✅" in steps[0] and "⏳" in steps[1] and 'aria-current="step"' in steps[1]
+        assert "[IA] Entraîner" in steps[1]
+        tid = next(t.id for t in db.list_project_tasks(p.id) if t.title == "[IA] Entraîner")
+        for cb in ("td", "tpo", "tnw"):
+            assert f'data-cb="{cb}:{tid}"' in steps[1], cb
+        assert 'aria-label="Semaine pro. : [IA] Entraîner"' in text
+        loose = text.split('id="loose-h"')[1]
+        assert "Sans étape" in text and "[IA] Vrac" in loose
+        for cb in ("add", "plan", "no"):
+            assert f'data-cb="ps:{cb}:{s.id}"' in text, cb
+        assert "Idée &lt;i&gt;neuve&lt;/i&gt;" in text and "<i>neuve" not in text
+        assert re.search(rf'data-cb="pp:fix:{p.id}" data-discuss="1" data-label="✏️ Corriger"', text)
+        assert not re.search(rf'data-cb="pp:pause:{p.id}" data-discuss', text)
+    run(app, scenario)
+
+
+def test_paused_project_hides_suggestions():
+    app, db = make()
+    p, _, s = _detail_project(db, status="paused")
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get(f"/projets/{p.id}")).text()
+        assert "ps:add:" not in text and "Suggestions en attente" not in text
+        assert f'data-cb="pp:resume:{p.id}"' in text and "En pause" in text
+    run(app, scenario)
+
+
+def test_tasks_groups_have_stable_keys_for_fold_state():
+    app, db = make()
+    p = Project(name="Projet IA", last_activity=NOW)
+    db.save_project(p)
+    db.upsert_task(Task(title="Avec projet", project_id=p.id))
+    db.upsert_task(Task(title="Sans", due=NOW + timedelta(days=1)))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/taches")).text()
+        assert f'data-gkey="{p.id}"' in text and 'data-gkey="sans-projet"' in text
+        assert 'aria-label="Semaine pro. : Avec projet">📅 Semaine pro.</button>' in text
+    run(app, scenario)
+
+
+def test_no_inline_handlers_or_scripts_in_rendered_pages():
+    app, db = make()
+    p, _, _ = _detail_project(db)
+    db.upsert_task(Task(title="Tâche", due=NOW + timedelta(hours=2)))
+
+    async def scenario(c):
+        await login(c)
+        for url in ["/", "/discussion"] + PAGES + [f"/projets/{p.id}", "/agenda?vue=semaine"]:
+            text = await (await c.get(url)).text()
+            assert "onclick=" not in text.lower(), url
+            assert not re.search(r"<[a-z][^>]*\son[a-z]+\s*=", text, re.I), url
+            assert re.findall(r"<script[^>]*>", text) == ['<script src="/static/app.js" defer>'], url
+    run(app, scenario)
+
+
+def test_click_discuss_label_is_capped():
+    svc = BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42)
+    svc.on_callback = lambda cb: Reply("Réponse")
+    app, _ = make(svc=svc)
+
+    async def scenario(c):
+        await login(c)
+        token = await csrf_of(c)
+        r = await c.post("/click", data={"data": "pm:add:x", "discuss": "1", "label": "A" * 500 + "Z"},
+                         headers={"X-CSRF": token})
+        assert r.status == 200
+        page = await (await c.get("/discussion")).text()
+        assert "A" * 200 in page and "A" * 201 not in page and "AZ" not in page
     run(app, scenario)
