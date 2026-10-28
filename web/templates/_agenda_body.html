@@ -34,11 +34,16 @@
     <h3 id="wd-{{ loop.index }}"><a href="/agenda?jour={{ d.day.isoformat() }}"{% if is_today %} aria-current="date"{% endif %}>{{ d.day|fr_day_short }}</a>{% if is_today %} <small>aujourd'hui</small>{% endif %}</h3>
     {% if d.items or d.dues %}
     <ul class="chips-list">
-      {% for it in d.items|sort(attribute="start") %}
-      <li class="chip {{ it.kind }}" style="--c: {{ it.color }}"><span class="time">{{ it.start|hm(tz) }}</span><span class="name">{{ it.title }}</span></li>
-      {% endfor %}
-      {% for du in d.dues %}
-      <li class="chip due" style="--c: {{ du.color }}"><span class="time">⚑ {{ du.at|hm(tz) }}</span><span class="name">{{ du.title }}</span></li>
+      {# créneaux et échéances mêlés, triés par heure locale (« 09h00 » se trie comme l'heure) #}
+      {% set ns = namespace(rows=[]) %}
+      {% for it in d.items %}{% set ns.rows = ns.rows + [(it.start|hm(tz), 0, loop.index, it)] %}{% endfor %}
+      {% for du in d.dues %}{% set ns.rows = ns.rows + [(du.at|hm(tz), 1, loop.index, du)] %}{% endfor %}
+      {% for at, due, _i, x in ns.rows|sort %}
+      {% if due %}
+      <li class="chip due" style="--c: {{ x.color }}"><span class="time">⚑ {{ at }}</span><span class="name">{{ x.title }}</span></li>
+      {% else %}
+      <li class="chip {{ x.kind }}" style="--c: {{ x.color }}"><span class="time">{{ at }}</span><span class="name">{{ x.title }}</span></li>
+      {% endif %}
       {% endfor %}
     </ul>
     {% else %}<p class="muted none">Rien de prévu</p>{% endif %}

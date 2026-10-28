@@ -297,6 +297,12 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     async def security_headers(request: web.Request, response: web.StreamResponse) -> None:
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        # /static : revalidé à chaque chargement (ETag), pour ne jamais garder l'ancien CSS/JS après un déploiement ;
+        # le reste (pages, fragments, réponses d'actions) contient des données personnelles : jamais en cache
+        if request.path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        else:
+            response.headers.setdefault("Cache-Control", "no-store")
 
     app = web.Application()
     app.on_response_prepare.append(security_headers)

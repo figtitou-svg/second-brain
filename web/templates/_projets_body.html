@@ -3,7 +3,7 @@
 {% macro when(p) -%}
 {% if p.days_left is none %}sans échéance{% elif p.days_left < 0 %}échéance passée{% else %}J-{{ p.days_left }}{% endif %}
 {%- endmacro %}
-{% macro card(p) %}
+{% macro card(p, h="h2") %}
 <li class="pcard{% if p.status != 'active' %} off{% endif %}{% if p.alert %} has-alert{% endif %}" style="--c: {{ p.color }}">
   <a href="/projets/{{ p.project_id }}">
     <svg class="pring-svg" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" class="track"/>
@@ -11,7 +11,7 @@
       <text x="32" y="37" class="mid">{{ p.percent }}%</text>
       {% if p.alert %}<circle cx="54" cy="10" r="6" class="alert"/>{% endif %}</svg>
     <div class="pbody">
-      <h2 class="pc-name">{{ p.name }}<span class="sr-only">, {{ p.percent }} %</span></h2>
+      <{{ h }} class="pc-name">{{ p.name }}<span class="sr-only">, {{ p.percent }} %</span></{{ h }}>
       {% if p.step %}<p class="pline"><span class="muted">Étape :</span> {{ p.step }}</p>{% endif %}
       {% if p.next_task %}<p class="pline"><span class="muted">Ensuite :</span> {{ p.next_task }}</p>{% endif %}
       <p class="meta"><span{% if p.days_left is not none and p.days_left < 0 %} class="alert-text"{% endif %}>⚑ {{ when(p) }}</span>
@@ -38,6 +38,6 @@
 {% if paused %}
 <section class="paused-projects" aria-labelledby="paused-h">
   <h2 id="paused-h" class="muted">En pause</h2>
-  <ul class="pcards">{% for p in paused %}{{ card(p) }}{% endfor %}</ul>
+  <ul class="pcards">{% for p in paused %}{{ card(p, "h3") }}{% endfor %}</ul>
 </section>
 {% endif %}

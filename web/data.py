@@ -594,4 +594,10 @@ class Views:
         return project_detail(self.db, project_id, self.now())
 
     def week(self) -> WeekSummary:
-        return week_summary(self.db, self.now())
+        """Échéances ramenées au fuseau du planificateur, comme l'Agenda (une date stockée en UTC change de jour)."""
+        w = week_summary(self.db, self.now())
+        tz = self.sched.tz
+
+        def local(ts: list[Task]) -> list[Task]:
+            return [t.model_copy(update={"due": t.due.astimezone(tz)}) for t in ts]
+        return replace(w, late=local(w.late), upcoming=local(w.upcoming))

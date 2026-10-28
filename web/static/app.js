@@ -17,8 +17,12 @@
 
   // html vient du serveur (gabarits échappés, HTML Telegram filtré) ; text=true pour un message local.
   // Une réponse qui porte des boutons ([data-cb], ex. les choix de durée) reste affichée jusqu'au clic ou à ✕.
+  // Focus : un bandeau à boutons reçoit le focus sur son premier choix ; à la fermeture (✕, Échap, ou choix
+  // fait sans nouvelle question) le focus revient à l'élément qui l'avait ouvert, s'il est encore là.
   function show(content, text) {
     if (!content || !content.trim()) return;   // réponse vide : le bandeau n'est pas touché
+    const fromToast = !toast.hidden && (toast.contains(document.activeElement) || document.activeElement === document.body);
+    if (!fromToast) rememberOrigin(document.activeElement);
     if (text) toast.textContent = content; else toast.innerHTML = content;
     const close = document.createElement("button");
     close.type = "button";
@@ -28,12 +32,34 @@
     toast.prepend(close);
     toast.hidden = false;
     clearTimeout(show.t);
-    if (!toast.querySelector("[data-cb]")) show.t = setTimeout(hideToast, 6000);
+    const first = toast.querySelector("[data-cb]");
+    if (first) { first.focus(); return; }
+    show.t = setTimeout(() => hideToast(false), 6000);
+    if (fromToast) restoreFocus();
   }
 
-  function hideToast() {
+  function rememberOrigin(el) {
+    show.origin = el && el !== document.body ? el : null;
+    show.originCb = show.origin?.dataset?.cb || null;
+  }
+
+  // l'élément d'origine, ou celui qui le remplace après un rechargement de section (même data-cb)
+  function restoreFocus() {
+    let el = show.origin;
+    if (!el || !el.isConnected) {
+      el = null;
+      if (show.originCb) for (const b of document.querySelectorAll("[data-cb]")) {
+        if (b.dataset.cb === show.originCb && !toast.contains(b)) { el = b; break; }
+      }
+    }
+    el?.focus?.();
+  }
+
+  function hideToast(restore) {
     clearTimeout(show.t);
+    const had = toast.contains(document.activeElement);
     toast.hidden = true;
+    if (restore || had) restoreFocus();
   }
 
   // une section n'est pas remplacée pendant qu'on s'en sert : focus clavier dedans ou clic en attente ;
@@ -42,13 +68,16 @@
     return (!force && el.contains(document.activeElement)) || el.querySelector("[data-cb]:disabled") !== null;
   }
 
-  // les groupes repliables (<details data-gkey>) gardent leur état replié d'un rechargement à l'autre
+  // les <details data-gkey> (groupes de projet, « Plus » d'une tâche) gardent leur état ouvert ou replié
+  // d'un rechargement à l'autre ; ceux qui apparaissent prennent l'état écrit dans le gabarit
   function replaceKeepingFolds(el, html) {
-    const closed = new Set();
-    for (const d of el.querySelectorAll("details[data-gkey]")) if (!d.open) closed.add(d.dataset.gkey);
+    const state = new Map();
+    for (const d of el.querySelectorAll("details[data-gkey]")) state.set(d.dataset.gkey, d.open);
     el.innerHTML = html;
-    if (!closed.size) return;
-    for (const d of el.querySelectorAll("details[data-gkey]")) if (closed.has(d.dataset.gkey)) d.open = false;
+    if (!state.size) return;
+    for (const d of el.querySelectorAll("details[data-gkey]")) {
+      if (state.has(d.dataset.gkey)) d.open = state.get(d.dataset.gkey);
+    }
   }
 
   // réponse d'erreur du serveur (fragment _error.html : <p class="error" role="alert">)
@@ -97,7 +126,7 @@
   }
 
   document.addEventListener("click", async (ev) => {
-    if (ev.target.closest("#toast > .x")) { hideToast(); return; }
+    if (ev.target.closest("#toast > .x")) { hideToast(true); return; }
     const cb = ev.target.closest("[data-cb]");
     const sy = ev.target.closest("[data-say]");
     if (cb) {
@@ -108,7 +137,7 @@
         // suite de conversation : la réponse est rangée dans la Discussion, on y va
         const label = (cb.dataset.label || cb.textContent || "").trim();
         const html = await post("/click", {data: cb.dataset.cb, discuss: "1", label});
-        if (html === null || failed(html)) { cb.disabled = false; show(html); return; }
+        if (html === null || !html.trim() || failed(html)) { cb.disabled = false; show(html); return; }
         location.href = "/discussion";     // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
@@ -133,7 +162,7 @@
         if (sy.disabled) return;
         sy.disabled = true;
         const html = await post("/say", {text: sy.dataset.say});
-        if (html === null || failed(html)) { sy.disabled = false; show(html); return; }
+        if (html === null || !html.trim() || failed(html)) { sy.disabled = false; show(html); return; }
         location.href = goto;              // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
@@ -174,8 +203,9 @@
   scrim?.addEventListener("click", () => setMenu(false));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (nav?.classList.contains("open")) setMenu(false);
-    else if (!toast.hidden) hideToast();
+    const typing = e.target.closest?.("input, textarea, select, .composer");
+    if (!toast.hidden && !typing) hideToast(true);
+    else setMenu(false);
   });
 
   // compte à rebours de l'anneau, chaque minute, sans appel au serveur

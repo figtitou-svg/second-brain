@@ -581,3 +581,88 @@ def test_failing_say_returns_error_fragment_and_is_kept_in_discussion():
         said = page.index("Lancer un projet robot")
         assert "Ça n" in page[said:] and "bot en panne" not in page
     run(app, scenario)
+
+
+# --- Task 8 : corrections visuelles ----------------------------------------------------------------------
+
+
+def test_cache_control_static_revalidates_and_pages_are_not_stored():
+    app, _ = make()
+
+    async def scenario(c):
+        await login(c)
+        for url in ("/static/app.css", "/static/app.js", "/static/fonts/atkinson-400.woff2"):
+            r = await c.get(url)
+            assert r.status == 200 and r.headers.get("Cache-Control") == "no-cache", url
+            assert r.headers.get("ETag") or r.headers.get("Last-Modified"), url
+            assert r.headers.get("X-Content-Type-Options") == "nosniff", url
+        for url in ("/", "/taches", "/fragment/taches", "/projets", "/fragment/projets"):
+            r = await c.get(url)
+            assert r.status == 200 and r.headers.get("Cache-Control") == "no-store", url
+            assert "default-src 'self'" in r.headers.get("Content-Security-Policy", ""), url
+            assert r.headers.get("X-Content-Type-Options") == "nosniff", url
+            assert r.headers.get("Referrer-Policy") == "no-referrer", url
+    run(app, scenario)
+
+
+def test_task_rows_fold_secondary_actions_into_more():
+    app, db = make()
+    t = Task(title="Envoyer le devis", due=NOW + timedelta(days=2))
+    db.upsert_task(t)
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/taches")).text()
+        row = text.split('<li class="rowcard taskcard')[1].split("</li>")[0]
+        visible, more = row.split('<details class="more"')
+        assert f'data-cb="td:{t.id}"' in visible and f'data-cb="plan:{t.id}"' in visible
+        assert f'data-gkey="t:{t.id}"' in more and "<summary>Plus" in more
+        for cb in ("dur", "tpo", "tnw", "ign"):
+            assert f'data-cb="{cb}:{t.id}"' in more and f'data-cb="{cb}:' not in visible, cb
+        assert 'aria-label="Semaine pro. : Envoyer le devis">📅 Semaine pro.</button>' in more
+        assert "<details class=\"more\" open" not in text                        # replié par défaut
+    run(app, scenario)
+
+
+def test_agenda_week_merges_deadlines_with_items_by_time():
+    from coach.models import Block
+    app, db = make()
+    t = Task(title="Bloc du matin", status="scheduled")
+    db.upsert_task(t)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 29, 9), end=dt(2026, 10, 29, 10)))
+    db.upsert_task(Task(title="Rendu tôt", due=dt(2026, 10, 29, 8)))
+    db.upsert_task(Task(title="Rendu tard", due=dt(2026, 10, 29, 18)))
+
+    async def scenario(c):
+        await login(c)
+        week = await (await c.get("/agenda?vue=semaine&jour=2026-10-27")).text()
+        day = next(s for s in week.split('<section class="wday')[1:] if "Bloc du matin" in s)
+        assert day.index("Rendu tôt") < day.index("Bloc du matin") < day.index("Rendu tard")
+        assert "⚑ 08h00" in day and "09h00" in day and "⚑ 18h00" in day
+    run(app, scenario)
+
+
+def test_week_summary_due_times_use_scheduler_timezone():
+    from datetime import datetime, timezone
+    app, db = make()
+    db.upsert_task(Task(title="Rendu UTC", due=datetime(2026, 10, 28, 23, 30, tzinfo=timezone.utc)))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/semaine")).text()
+        line = text.split("Rendu UTC")[1].split("</li>")[0]
+        assert "jeu. 29 oct." in line and "00h30" in line and "23h30" not in line
+    run(app, scenario)
+
+
+def test_paused_project_card_names_are_h3_under_paused_heading():
+    app, db = make()
+    db.save_project(Project(name="Actif", last_activity=NOW))
+    db.save_project(Project(name="Vieux", status="paused", last_activity=NOW))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/projets")).text()
+        assert re.search(r'<h2 class="pc-name">Actif', text)
+        assert re.search(r'<h3 class="pc-name">Vieux', text) and '<h2 class="pc-name">Vieux' not in text
+    run(app, scenario)
