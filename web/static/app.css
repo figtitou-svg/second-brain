@@ -182,9 +182,66 @@ a.item:hover{color:var(--text)}
 .duelist.late .when,.duelist.late li{color:var(--alert)}
 @media (prefers-color-scheme: light){.bars .fill,.chip,.slot{border-left-color:color-mix(in srgb,var(--c) 78%,#000)}
   .bars .fill{background:color-mix(in srgb,var(--c) 78%,#000)}}
+/* focus et tâches : cartes-lignes en 1, 2 ou 3 colonnes ; liseré et barre à la couleur du projet */
+.intro{margin:10px 0 0;font-size:14px}
+.empty-state{background:var(--card);border-radius:12px;padding:14px;margin-top:14px}
+.cards{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.rowcard{display:flex;flex-direction:column;gap:8px;min-width:0;background:var(--card);border-radius:var(--radius);
+  border:1px solid transparent;border-left:4px solid var(--c);padding:12px;overflow-wrap:anywhere}
+.rowcard>*{min-width:0;margin:0}
+.rowcard .rtitle{margin:0;font-size:16px;font-weight:600;line-height:1.3;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.rowhead{display:flex;align-items:flex-start;gap:10px}
+.rowhead .rtitle{flex:1}
+.rk{flex:none;min-width:28px;font-family:"Bricolage Grotesque",system-ui,sans-serif;font-size:20px;line-height:1.1;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.lvl{flex:none;font-size:12px;line-height:20px;padding:0 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.lvl-focus{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.lvl-haut{color:var(--text);border-color:var(--muted)}
+.rowcard.top{border-color:var(--c);border-left-width:6px}
+.rowcard.top .rk{color:var(--c)}
+.gbar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.gbar i{display:block;height:100%;min-width:4px;border-radius:4px;background:var(--c)}
+.reason{font-size:14px;color:var(--text)}
+.meta{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:13px;color:var(--muted)}
+.meta>span{min-width:0;overflow-wrap:anywhere}
+.overdue .due{color:var(--alert);font-weight:700}
+.rowcard.overdue{border-color:var(--alert);border-left-color:var(--c)}
+.row-actions{display:flex;flex-wrap:wrap;gap:8px}
+.row-actions button{flex:1 1 auto;min-width:44px;min-height:44px}
+.row-actions .primary{flex:2 1 auto;background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:700}
+.row-actions .icon-btn{flex:0 0 52px;padding:0;font-size:18px}
+.row-actions.secondary{gap:6px}
+.row-actions.secondary button{flex:1 1 calc(50% - 6px);padding:0 8px;font-size:13px;color:var(--muted)}
+/* pastilles de filtre : seule la rangée défile horizontalement, jamais la page */
+.chips{display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding:2px 0 6px;max-width:100%;
+  -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.chips a{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--line);background:var(--card);color:var(--text);text-decoration:none;white-space:nowrap}
+.chips .n{font-size:12px;min-width:22px;padding:0 6px;border-radius:999px;background:var(--line);text-align:center;
+  font-variant-numeric:tabular-nums}
+.chips a.has-late .n{background:var(--alert);color:#fff}
+.chips a[aria-current="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.chips a[aria-current="true"] .n{background:var(--bg);color:var(--text)}
+/* groupes de tâches par projet, repliables */
+.tgroup{margin-top:18px;min-width:0}
+.tgroup summary{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;list-style:none;
+  border-bottom:2px solid var(--c);padding:0 4px}
+.tgroup summary::-webkit-details-marker{display:none}
+.tgroup summary::after{content:"▾";margin-left:4px;color:var(--muted)}
+.tgroup:not([open]) summary::after{content:"▸"}
+.tgroup .dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--c)}
+.tgroup .gname{flex:1;min-width:0;font-family:"Bricolage Grotesque",system-ui,sans-serif;font-size:17px;font-weight:600;
+  color:var(--c);overflow-wrap:anywhere}
+.tgroup summary .n{flex:none;font-size:13px;color:var(--muted)}
+.pin{color:var(--text)}
+@media (prefers-color-scheme: light){.tgroup .gname{color:var(--text)}
+  .gbar i,.tgroup .dot{background:var(--c);background:color-mix(in srgb,var(--c) 78%,#000)}
+  .rowcard,.tgroup summary{border-left-color:var(--c);border-left-color:color-mix(in srgb,var(--c) 78%,#000)}
+  .tgroup summary{border-bottom-color:var(--c);border-bottom-color:color-mix(in srgb,var(--c) 78%,#000)}}
 /* tablette : menu en icônes, 2 colonnes */
 @media (min-width:700px){
   .week{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .recap{grid-template-columns:repeat(2,minmax(0,1fr))}
   .recap-time{grid-column:1/-1}
   .timeline{min-height:560px}
@@ -217,6 +274,7 @@ a.item:hover{color:var(--text)}
   #home{grid-template-columns:repeat(3,1fr)}
   .dayview{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
   .week{grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+  .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
   .wday{padding:6px}
   .recap{grid-template-columns:minmax(0,3fr) minmax(0,2fr) minmax(0,2fr)}
   .recap-time{grid-column:auto}

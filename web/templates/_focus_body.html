@@ -1,6 +1,28 @@
-{# gabarit minimal (Task 4) : le classement complet arrive en Task 6 #}
-{% if rows %}<ol>{% for r in rows %}
-  <li>{{ r.title }} <span class="muted">{{ r.reason }}</span>
-    <span class="actions"><button type="button" data-cb="fup:{{ r.task_id }}" aria-label="Monter">⬆</button><button type="button" data-cb="fdn:{{ r.task_id }}" aria-label="Descendre">⬇</button></span></li>
-{% endfor %}</ol>
-{% else %}<p class="muted">Aucune tâche à classer.</p>{% endif %}
+{# Focus : une carte par tâche classée. Les 3 premières (niveau « focus ») sont mises en valeur (classe top).
+   Couleur (--c) et largeur de barre viennent des données internes ; titres et raisons en texte simple, échappés. #}
+{% set LEVEL = {"focus": "Focus", "haut": "Haut", "moyen": "Moyen", "faible": "Faible"} %}
+{% if rows %}
+<p class="muted intro">Classement calculé par le coach. ⬆ et ⬇ corrigent l'importance d'une tâche.</p>
+<ol class="cards rank-list">
+  {% for r in rows %}
+  <li class="rowcard focuscard{% if r.level == 'focus' %} top{% endif %}" style="--c: {{ r.color }}">
+    <div class="rowhead">
+      <span class="rk"><span class="sr-only">Rang </span>{{ r.rank }}</span>
+      <h2 class="rtitle">{{ r.title }}</h2>
+      <span class="lvl lvl-{{ r.level }}">{{ LEVEL.get(r.level, r.level) }}</span>
+    </div>
+    <div class="gbar" role="img" aria-label="Score {{ r.score }}, {{ r.bar }} % du premier"><i style="width: {{ r.bar }}%"></i></div>
+    {% if r.reason %}<p class="reason">{{ r.reason }}</p>{% endif %}
+    <p class="meta">
+      {% if r.due %}<span class="due">⚑ {{ r.due|fr_day_short }} {{ r.due|hm }}</span>{% else %}<span class="muted">Sans échéance</span>{% endif %}
+      {% if r.minutes %}<span class="muted">⏱ {{ r.minutes|dur }}</span>{% endif %}
+    </p>
+    <div class="row-actions">
+      <button type="button" class="primary" data-cb="nudgego:{{ r.task_id }}" aria-label="Je m'y mets : {{ r.title }}">▶ Je m'y mets</button>
+      <button type="button" class="icon-btn" data-cb="fup:{{ r.task_id }}" aria-label="Plus important : {{ r.title }}">⬆</button>
+      <button type="button" class="icon-btn" data-cb="fdn:{{ r.task_id }}" aria-label="Moins important : {{ r.title }}">⬇</button>
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}<p class="muted empty-state">Aucune tâche à classer.</p>{% endif %}

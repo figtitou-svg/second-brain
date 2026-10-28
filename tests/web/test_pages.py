@@ -344,3 +344,73 @@ def test_agenda_week_highlights_today_and_lists_items_as_chips():
         other = await (await c.get("/agenda?vue=semaine&jour=2026-11-04")).text()
         assert 'class="wday today"' not in other
     run(app, scenario)
+
+
+# --- Task 6 : rendu du Focus et des Tâches ----------------------------------------------------------------
+
+def test_focus_and_tasks_empty_states():
+    app, _ = make()
+
+    async def scenario(c):
+        await login(c)
+        focus = await (await c.get("/focus")).text()
+        assert "Aucune tâche à classer" in focus and "rowcard" not in focus
+        taches = await (await c.get("/taches")).text()
+        assert "Aucune tâche ouverte" in taches and 'href="/taches?filtre=sans-projet"' in taches
+    run(app, scenario)
+
+
+def test_focus_cards_highlight_top_three_with_bar_reason_and_go_button():
+    app, db = make()
+    tasks = [Task(title=f"Tâche {i}", due=NOW + timedelta(days=i + 1)) for i in range(4)]
+    for t in tasks:
+        db.upsert_task(t)
+    db.upsert_task(Task(title="<b>x</b> l'essai", due=NOW + timedelta(days=9)))
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/focus")).text()
+        assert text.count('class="rowcard focuscard top"') == 3
+        assert text.count('class="rowcard focuscard"') == 2
+        first = text.split('class="rowcard focuscard')[1]
+        assert "Tâche 0" in first and 'class="gbar"' in first and "width: 100%" in first
+        assert f'data-cb="nudgego:{tasks[0].id}"' in first and "▶ Je m'y mets</button>" in first
+        assert 'class="reason"' in first and "Focus" in first and "⏱" in first
+        assert "<b>x</b>" not in text and "&lt;b&gt;x&lt;/b&gt; l&#39;essai" in text
+        assert "&amp;#39;" not in text and "&amp;lt;" not in text           # pas de double échappement
+    run(app, scenario)
+
+
+def test_tasks_page_marks_overdue_rows_active_chip_and_escapes_titles():
+    app, db = make()
+    p = Project(name="Projet IA", last_activity=NOW)
+    db.save_project(p)
+    m = Milestone(project_id=p.id, title="Modèle", position=0)
+    db.save_milestone(m)
+    late = Task(title="Rendu en retard", due=NOW - timedelta(days=1), project_id=p.id, milestone_id=m.id)
+    soon = Task(title="<b>x</b>", due=NOW + timedelta(days=2), status="scheduled")
+    db.upsert_task(late)
+    db.upsert_task(soon)
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/taches")).text()
+        rows = text.split('<li class="rowcard taskcard')[1:]
+        late_row = next(r for r in rows if "Rendu en retard" in r)
+        soon_row = next(r for r in rows if "&lt;b&gt;x&lt;/b&gt;" in r)
+        assert late_row.startswith(' overdue"') and "En retard" in late_row and "Étape : Modèle" in late_row
+        assert "overdue" not in soon_row.split(">")[0] and "📌" in soon_row
+        assert "<b>x</b>" not in text
+        assert data.project_colors(db)[p.id] in text and "Projet IA" in text and "Sans projet" in text
+        assert text.count('aria-current="true"') == 1
+        assert 'href="/taches?filtre=tout" aria-current="true"' in text
+        assert re.findall(r'href="([^"]+)"[^>]*aria-current="page"', text) == ["/taches", "/taches"]
+        retard = await (await c.get("/taches?filtre=retard")).text()
+        assert 'href="/taches?filtre=retard" aria-current="true"' in retard and retard.count('aria-current="true"') == 1
+        assert "Rendu en retard" in retard and "&lt;b&gt;x&lt;/b&gt;" not in retard
+        assert re.search(r'filtre=retard"[^>]*>En retard <span class="n">1</span>', retard)
+        empty = await (await c.get("/taches?filtre=sans-projet")).text()
+        assert "&lt;b&gt;x&lt;/b&gt;" in empty                 # la tâche sans projet
+        frag = await (await c.get("/fragment/taches?filtre=semaine")).text()
+        assert 'id="nav"' not in frag and 'href="/taches?filtre=semaine" aria-current="true"' in frag
+    run(app, scenario)

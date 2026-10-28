@@ -1,10 +1,39 @@
-{# gabarit minimal (Task 4) : pastilles, groupes repliés et mise en forme complète en Task 6 #}
-<nav class="chips" aria-label="Filtres">{% for f, label in [("tout", "Tout"), ("retard", "En retard"), ("semaine", "Cette semaine"), ("sans-projet", "Sans projet")] %}
-  <a href="/taches?filtre={{ f }}">{{ label }} ({{ tasks.counts[f] }})</a>{% endfor %}</nav>
+{# Tâches : pastilles de filtre (aria-current="true" : "page" est réservé au menu), puis un groupe repliable par projet.
+   Couleurs (--c) internes ; titres, noms de projet et d'étape échappés. #}
+{% set FILTRES = [("tout", "Tout"), ("retard", "En retard"), ("semaine", "Cette semaine"), ("sans-projet", "Sans projet")] %}
+<nav class="chips" aria-label="Filtres">
+  {% for f, label in FILTRES %}
+  <a href="/taches?filtre={{ f }}"{% if tasks.filtre == f %} aria-current="true"{% endif %}{% if f == "retard" and tasks.counts[f] %} class="has-late"{% endif %}>{{ label }} <span class="n">{{ tasks.counts[f] }}</span></a>
+  {% endfor %}
+</nav>
 {% for g in tasks.groups %}
-<h2>{{ g.name }}</h2>
-<ul>{% for t in g.rows %}
-  <li>{{ t.title }}
-    <span class="actions"><button type="button" data-cb="td:{{ t.task_id }}">✅ Fait</button><button type="button" data-cb="plan:{{ t.task_id }}">Planifier</button><button type="button" data-cb="dur:{{ t.task_id }}">Durée</button><button type="button" data-cb="tpo:{{ t.task_id }}">⏭ Demain</button><button type="button" data-cb="tnw:{{ t.task_id }}">📅 Semaine pro.</button><button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Supprimer">🗑</button></span></li>
-{% endfor %}</ul>
-{% else %}<p class="muted">Aucune tâche ouverte.</p>{% endfor %}
+<details class="tgroup" open style="--c: {{ g.color }}">
+  <summary><span class="dot" aria-hidden="true"></span><span class="gname">{{ g.name }}</span>
+    <span class="n">{{ g.rows|length }} tâche{{ "s" if g.rows|length > 1 }}</span></summary>
+  <ul class="cards task-list">
+    {% for t in g.rows %}
+    <li class="rowcard taskcard{% if t.overdue %} overdue{% endif %}">
+      <h2 class="rtitle">{{ t.title }}</h2>
+      <p class="meta">
+        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>{% endif %}
+        {% if t.minutes %}<span class="muted">⏱ {{ t.minutes|dur }}</span>{% endif %}
+        {% if t.step %}<span class="muted step">Étape : {{ t.step }}</span>{% endif %}
+        {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}
+      </p>
+      <div class="row-actions">
+        <button type="button" class="primary" data-cb="td:{{ t.task_id }}" aria-label="Fait : {{ t.title }}">✅ Fait</button>
+        <button type="button" data-cb="plan:{{ t.task_id }}" aria-label="Planifier : {{ t.title }}">Planifier</button>
+      </div>
+      <div class="row-actions secondary">
+        <button type="button" data-cb="dur:{{ t.task_id }}" aria-label="Durée : {{ t.title }}">⏱ Durée</button>
+        <button type="button" data-cb="tpo:{{ t.task_id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
+        <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine pro.</button>
+        <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Ignorer : {{ t.title }}">🗑 Ignorer</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</details>
+{% else %}
+<p class="muted empty-state">{% if tasks.counts["tout"] %}Aucune tâche dans ce filtre.{% else %}Aucune tâche ouverte.{% endif %}</p>
+{% endfor %}
