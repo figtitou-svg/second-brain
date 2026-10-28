@@ -234,6 +234,22 @@ def test_no_external_resources_in_templates_and_css():
         assert "@import" not in text and "url(http" not in text and "//fonts." not in text, f
 
 
+def test_every_font_referenced_by_the_css_exists_and_is_served():
+    css = (Path(server.HERE) / "static" / "app.css").read_text(encoding="utf-8")
+    urls = re.findall(r"url\((/static/fonts/[^)]+\.woff2)\)", css)
+    assert len(urls) == 3
+    for url in urls:
+        f = Path(server.HERE) / url.removeprefix("/")
+        assert f.is_file() and f.read_bytes()[:4] == b"wOF2", url   # vrai fichier WOFF2, pas une page d'erreur
+    app, _ = make_app()
+
+    async def scenario(c):
+        for url in urls:
+            r = await c.get(url)
+            assert r.status == 200 and len(await r.read()) > 5000, url
+    run(app, scenario)
+
+
 def test_menu_lists_all_sections_with_future_ones_disabled():
     app, _ = make_app()
 

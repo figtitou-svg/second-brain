@@ -1,4 +1,8 @@
 /* web/static/app.css — téléphone d'abord ; ruptures 700 px (tablette) et 1100 px (ordinateur) */
+/* polices servies par le bot (sous-ensemble latin, licence OFL) : rien n'est chargé depuis Internet */
+@font-face{font-family:"Atkinson Hyperlegible";font-weight:400;font-display:swap;src:url(/static/fonts/atkinson-400.woff2) format("woff2")}
+@font-face{font-family:"Atkinson Hyperlegible";font-weight:700;font-display:swap;src:url(/static/fonts/atkinson-700.woff2) format("woff2")}
+@font-face{font-family:"Bricolage Grotesque";font-weight:500 700;font-display:swap;src:url(/static/fonts/bricolage.woff2) format("woff2")}
 :root{--bg:#141B2D;--card:#1E2740;--line:#2C3654;--text:#ECEEF6;--muted:#8F99B5;--alert:#FF5470;--accent:#5CB8FF;
   --nav:#10172A;--radius:14px;font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark}
