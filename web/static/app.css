@@ -314,8 +314,33 @@ a.item:hover{color:var(--text)}
 @media (prefers-color-scheme: light){.pc-name,.step.current .stitle{color:var(--text)}
   .pcard{border-top-color:var(--c);border-top-color:color-mix(in srgb,var(--c) 78%,#000)}
   .phead{border-left-color:var(--c);border-left-color:color-mix(in srgb,var(--c) 78%,#000)}}
+/* --- à trier et suggestions : groupes titrés (compte), cartes-lignes, blocs par projet --- */
+.sort-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:0 20px}
+.sort-cols>*,.sort-group,.sblock{min-width:0}
+.sec-h{display:flex;align-items:center;gap:8px;margin:20px 0 8px;font-size:17px;font-weight:600;color:var(--text);
+  overflow-wrap:anywhere}
+.sec-h .n{flex:none;font-family:"Atkinson Hyperlegible",system-ui,sans-serif;font-size:12px;font-weight:700;min-width:22px;
+  padding:0 6px;border-radius:999px;background:var(--line);text-align:center;font-variant-numeric:tabular-nums}
+.sort-group .empty-state,.sblock .empty-state{margin-top:0}
+.sort-list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.evcard{--c:var(--accent)}
+.evcard .when{color:var(--text)}
+.sgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.sgroup{margin-top:0;border-top:4px solid var(--c);overflow-wrap:anywhere}
+.sgroup .gname{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-family:"Bricolage Grotesque",system-ui,sans-serif;
+  font-size:17px;font-weight:600;line-height:1.25;color:var(--c);min-width:0}
+.sgroup .gname>span:last-child{min-width:0;overflow-wrap:anywhere}
+.sgroup .dot{flex:none;width:12px;height:12px;border-radius:50%;background:var(--c)}
+.sgroup .step,.ptask .to{color:var(--muted);font-weight:400}
+.block-actions{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.propcard{--c:var(--accent)}
+.ptext{min-width:0;overflow-wrap:anywhere}
+@media (prefers-color-scheme: light){.sgroup .gname{color:var(--text)}
+  .sgroup{border-top-color:var(--c);border-top-color:color-mix(in srgb,var(--c) 78%,#000)}
+  .sgroup .dot{background:var(--c);background:color-mix(in srgb,var(--c) 78%,#000)}}
 
 @media (min-width:700px){
+  .sort-list,.sgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .week{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pcards{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -358,6 +383,9 @@ a.item:hover{color:var(--text)}
   .dayview{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
   .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pcards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sblock .sort-list{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sort-cols{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sort-cols .sort-list{grid-template-columns:minmax(0,1fr)}
   .recap{grid-template-columns:minmax(0,3fr) minmax(0,2fr) minmax(0,2fr)}
   .recap-time{grid-column:auto}
 }

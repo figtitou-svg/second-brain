@@ -164,3 +164,18 @@ def test_badge_suggestions_equals_page_total_on_mixed_fixture():
     total = v.suggestions()["total"]
     assert total == 5 and v.badges()["suggestions"] == total
 
+
+
+def test_a_trier_times_are_in_scheduler_timezone():
+    from datetime import datetime, timezone
+    db, v = make()
+    db.add_event_if_new(Event(title="RDV UTC", start=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+                              end=datetime(2026, 10, 30, 9, tzinfo=timezone.utc)))
+    db.upsert_task(Task(title="Rendu UTC", due=datetime(2026, 10, 28, 23, 30, tzinfo=timezone.utc)))
+    db.upsert_task(Task(title="Sans date"))
+    r = v.a_trier()
+    e = r["events"][0]
+    assert (e.start.hour, e.end.hour) == (9, 10) and e.start.tzinfo == v.sched.tz        # UTC+1 (heure d'hiver)
+    due = r["tasks"][0].due
+    assert due.tzinfo == v.sched.tz and (due.day, due.hour, due.minute) == (29, 0, 30)    # change de jour
+    assert r["tasks"][1].due is None

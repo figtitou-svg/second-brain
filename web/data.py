@@ -607,7 +607,14 @@ class Views:
     # --- étape 3 : À trier, Suggestions, Notifications, Notes, pastilles ---------------------------------
 
     def a_trier(self) -> dict:
-        return {"events": event_rows(self.db), "tasks": unplanned_tasks(self.db, self.now())}
+        """Heures ramenées au fuseau du planificateur : le gabarit n'affiche que des heures locales."""
+        tz = self.sched.tz
+
+        def local(moment: datetime) -> datetime:
+            return moment.replace(tzinfo=tz) if moment.tzinfo is None else moment.astimezone(tz)
+        events = [replace(e, start=local(e.start), end=local(e.end)) for e in event_rows(self.db)]
+        tasks = [replace(t, due=local(t.due)) if t.due else t for t in unplanned_tasks(self.db, self.now())]
+        return {"events": events, "tasks": tasks}
 
     def suggestions(self) -> dict:
         return suggestions_view(self.db)

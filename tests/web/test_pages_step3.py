@@ -283,3 +283,130 @@ def test_memory_notes_never_raises(monkeypatch, caplog):
     assert caplog.text.count("notes :") == 3
     monkeypatch.setitem(sys.modules, "memory", None)                 # import impossible
     assert notes.recent(5) == [] and notes.search("x", 3) == [] and notes.get("x") is None
+
+
+# --- Task 5 : gabarits À trier et Suggestions ---------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from coach.models import Milestone, Suggestion  # noqa: E402
+
+EVIL = '<script>alert("x")</script> "guillemets"'
+
+
+def _buttons(html: str) -> list[tuple[str, str, str]]:
+    """(data-cb, aria-label, texte visible sans les émojis aria-hidden) de chaque bouton."""
+    out = []
+    for attrs, inner in re.findall(r"<button([^>]*)>(.*?)</button>", html, re.S):
+        cb = re.search(r'data-cb="([^"]*)"', attrs)
+        label = re.search(r'aria-label="([^"]*)"', attrs)
+        visible = re.sub(r'<span aria-hidden="true">.*?</span>', "", inner)
+        visible = re.sub(r"<[^>]+>", "", visible).strip()
+        out.append((cb.group(1) if cb else "", label.group(1) if label else "", visible))
+    return out
+
+
+def test_a_trier_page_buttons_once_escaped_and_labelled():
+    app, db = make()
+    db.add_event_if_new(Event(title=EVIL, start=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+                              end=datetime(2026, 10, 30, 9, 30, tzinfo=timezone.utc), location="Salle <b>B</b>"))
+    ev = db.list_events("proposed")[0]
+    late = Task(title=EVIL, due=NOW - timedelta(days=1), estimated_minutes=45)
+    fine = Task(title="Plus tard", due=NOW + timedelta(days=3))
+    for t in (late, fine):
+        db.upsert_task(t)
+
+    async def scenario(c):
+        await login(c)
+        for url in ("/a-trier", "/fragment/a-trier"):
+            text = await (await c.get(url)).text()
+            body = text.split('id="a-trier"')[1] if url == "/a-trier" else text
+            assert "Rendez-vous détectés" in body and "Tâches à planifier" in body and "Rien à trier." not in body
+            for cb in (f"evadd:{ev.id}", f"evign:{ev.id}", f"plan:{late.id}", f"dur:{late.id}", f"ign:{late.id}",
+                       f"plan:{fine.id}"):
+                assert body.count(f'data-cb="{cb}"') == 1, cb
+            assert "<script>alert" not in body and "&lt;script&gt;" in body and "<b>B</b>" not in body
+            assert "9h00" in body and "10h30" in body                         # heures locales (UTC+1)
+            assert re.search(r'class="rowcard taskcard overdue"[^>]*>.*?En retard', body, re.S)
+            for cb, label, visible in _buttons(body):
+                assert visible and visible in label, (cb, label, visible)    # WCAG 2.5.3
+    run(app, scenario)
+
+
+def test_a_trier_empty_states():
+    app, db = make()
+
+    async def scenario(c):
+        await login(c)
+        body = (await (await c.get("/a-trier")).text()).split('id="a-trier"')[1]
+        assert body.count("Rien à trier.") == 1 and "Rendez-vous détectés" not in body
+        db.upsert_task(Task(title="Seule"))
+        frag = await (await c.get("/fragment/a-trier")).text()
+        assert frag.count("Rien à trier.") == 1 and "Rendez-vous détectés" in frag and "Seule" in frag
+    run(app, scenario)
+
+
+def test_suggestions_page_three_blocks_buttons_once_and_escaped():
+    app, db = make()
+    p = Project(name='Projet <i>IA</i> "x"', last_activity=NOW)
+    db.save_project(p)
+    m = Milestone(project_id=p.id, title="Étape <b>1</b>", position=0)
+    db.save_milestone(m)
+    sug = Suggestion(batch="b1", project_id=p.id, milestone_id=m.id, title=EVIL, estimated_minutes=40, created_at=NOW)
+    db.save_suggestions([sug])
+    loose = Task(title="Vrac <u>", project_id=p.id)
+    db.upsert_task(loose)
+    db.set_proposal(loose.id, p.id, m.id, "lot")
+    other = Task(title="Nouvelle <script>")
+    db.upsert_task(other)
+    db.set_proposal(other.id, p.id, m.id, "proposed")
+
+    async def scenario(c):
+        await login(c)
+        for url in ("/suggestions", "/fragment/suggestions"):
+            text = await (await c.get(url)).text()
+            body = text.split('id="suggestions"')[1] if url == "/suggestions" else text
+            assert "Aucune suggestion en attente." not in body
+            assert "Tâches proposées" in body and "Rangements" in body and "Propositions par tâche" in body
+            for cb in (f"ps:add:{sug.id}", f"ps:plan:{sug.id}", f"ps:no:{sug.id}", "ps:all:b1", "ps:none:b1",
+                       f"pa:ok:{loose.id}", f"pa:no:{loose.id}", f"pa:all:{p.id}", f"pa:none:{p.id}",
+                       f"pjok:{other.id}", f"pjwho:{other.id}", f"pjno:{other.id}"):
+                assert body.count(f'data-cb="{cb}"') == 1, cb
+            assert "<script>" not in body and "<u>" not in body and "Projet <i>IA" not in body
+            assert "Étape <b>1</b>" not in body
+            assert "📁 <b>Projet &lt;i&gt;IA&lt;/i&gt;" in body                # texte Telegram filtré par tg
+            assert "→" in body
+            for cb, label, visible in _buttons(body):
+                assert visible and visible in label, (cb, label, visible)
+            labels = [label for _, label, _ in _buttons(body)]
+            assert len(labels) == len(set(labels))                           # pas deux boutons au même nom
+    run(app, scenario)
+
+
+def test_suggestions_empty_state():
+    app, _ = make()
+
+    async def scenario(c):
+        await login(c)
+        body = (await (await c.get("/suggestions")).text()).split('id="suggestions"')[1]
+        assert "Aucune suggestion en attente." in body and "data-cb" not in body
+    run(app, scenario)
+
+
+def test_new_pages_with_data_have_no_inline_script_or_safe_style():
+    app, db = make()
+    db.add_event_if_new(Event(title="RDV", start=NOW + timedelta(days=1), end=NOW + timedelta(days=1, hours=1)))
+    db.upsert_task(Task(title="T"))
+    p = Project(name="P", last_activity=NOW)
+    db.save_project(p)
+    db.save_suggestions([Suggestion(batch="b", project_id=p.id, title="S", created_at=NOW)])
+
+    async def scenario(c):
+        await login(c)
+        for url in ("/a-trier", "/suggestions"):
+            text = await (await c.get(url)).text()
+            assert not re.search(r"<[a-z][^>]*\son[a-z]+\s*=", text, re.I), url
+            assert re.findall(r"<script[^>]*>", text) == ['<script src="/static/app.js" defer>'], url
+            assert all(re.fullmatch(r"--c: #[0-9A-Fa-f]{6}", s) for s in re.findall(r'style="([^"]*)"', text.split("<main")[1])), url
+            assert "http://" not in text and "https://" not in text, url
+    run(app, scenario)

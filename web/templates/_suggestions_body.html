@@ -1,3 +1,91 @@
-{# Suggestions (gabarit minimal, design complet à la Task 5). #}
-{% if suggestions.total %}<p>{{ suggestions.total }} suggestion{{ "s" if suggestions.total > 1 }} en attente.</p>
-{% else %}<p class="muted">Aucune suggestion en attente.</p>{% endif %}
+{# Suggestions : (1) tâches proposées par projet (lot ps:*), (2) rangements « tâche → étape » (pa:*),
+   (3) propositions de projet pour une tâche (texte Telegram filtré par tg, boutons de proposal_card).
+   Couleur (--c) interne ; titres, noms de projet et d'étape échappés ; data-cb : identifiants internes, échappés.
+   Les émojis des boutons sont aria-hidden : chaque aria-label contient le texte visible (WCAG 2.5.3). #}
+{% set s = suggestions %}
+{% if not s.total %}
+<p class="muted empty-state">Aucune suggestion en attente.</p>
+{% else %}
+<p class="muted intro">{{ s.total }} suggestion{{ "s" if s.total > 1 }} en attente.</p>
+
+{% if s.batches %}
+{% set nb = s.batches|map(attribute="items")|map("length")|sum %}
+<section class="sblock" aria-labelledby="sg-ps-h">
+  <h2 id="sg-ps-h" class="sec-h">Tâches proposées <span class="n">{{ nb }}</span></h2>
+  <div class="sgrid">
+  {% for b in s.batches %}
+  <article class="card sgroup" style="--c: {{ b.color }}" aria-labelledby="sg-ps-{{ loop.index }}">
+    <h3 id="sg-ps-{{ loop.index }}" class="gname"><span class="dot" aria-hidden="true"></span><span>{{ b.project_name }}</span></h3>
+    <ul class="plist">
+      {% for i in b.items %}
+      <li class="ptask">
+        <p class="ptitle">{{ i.title }}</p>
+        {% if i.minutes or i.step %}<p class="meta">
+          {% if i.minutes %}<span>⏱ {{ i.minutes|dur }}</span>{% endif %}
+          {% if i.step %}<span class="step">Étape : {{ i.step }}</span>{% endif %}</p>{% endif %}
+        <div class="row-actions">
+          <button type="button" class="primary" data-cb="ps:add:{{ i.suggestion_id }}" aria-label="Ajouter : {{ i.title }}"><span aria-hidden="true">➕ </span>Ajouter</button>
+          <button type="button" data-cb="ps:plan:{{ i.suggestion_id }}" aria-label="Planifier : {{ i.title }}"><span aria-hidden="true">📌 </span>Planifier</button>
+          <button type="button" data-cb="ps:no:{{ i.suggestion_id }}" aria-label="Non : {{ i.title }}">Non</button>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="row-actions block-actions">
+      <button type="button" class="primary" data-cb="ps:all:{{ b.batch_id }}" aria-label="Tout ajouter : {{ b.project_name }}">Tout ajouter</button>
+      <button type="button" data-cb="ps:none:{{ b.batch_id }}" aria-label="Rien : tâches proposées, {{ b.project_name }}">Rien</button>
+    </div>
+  </article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if s.lots %}
+{% set nl = s.lots|map(attribute="rows")|map("length")|sum %}
+<section class="sblock" aria-labelledby="sg-pa-h">
+  <h2 id="sg-pa-h" class="sec-h">Rangements <span class="n">{{ nl }}</span></h2>
+  <div class="sgrid">
+  {% for l in s.lots %}
+  <article class="card sgroup" style="--c: {{ l.color }}" aria-labelledby="sg-pa-{{ loop.index }}">
+    <h3 id="sg-pa-{{ loop.index }}" class="gname"><span class="dot" aria-hidden="true"></span><span>{{ l.project_name }}</span></h3>
+    <ul class="plist">
+      {% for r in l.rows %}
+      <li class="ptask">
+        <p class="ptitle">{{ r.title }} <span class="to"><span aria-hidden="true">→</span><span class="sr-only">vers l'étape</span> {{ r.step }}</span></p>
+        <div class="row-actions">
+          <button type="button" class="primary" data-cb="pa:ok:{{ r.task_id }}" aria-label="Valider : {{ r.title }}"><span aria-hidden="true">✅ </span>Valider</button>
+          <button type="button" data-cb="pa:no:{{ r.task_id }}" aria-label="Non : {{ r.title }}">Non</button>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="row-actions block-actions">
+      <button type="button" class="primary" data-cb="pa:all:{{ l.project_id }}" aria-label="Tout valider : {{ l.project_name }}">Tout valider</button>
+      <button type="button" data-cb="pa:none:{{ l.project_id }}" aria-label="Rien : rangements, {{ l.project_name }}">Rien</button>
+    </div>
+  </article>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if s.proposals %}
+<section class="sblock" aria-labelledby="sg-pj-h">
+  <h2 id="sg-pj-h" class="sec-h">Propositions par tâche <span class="n">{{ s.proposals|length }}</span></h2>
+  <ul class="sort-list">
+    {% for p in s.proposals %}
+    <li class="rowcard propcard">
+      <h3 class="rtitle">{{ p.task_title }}</h3>
+      <div class="ptext">{{ p.text|tg }}</div>
+      {% if p.buttons %}<div class="row-actions">
+        {% for row in p.buttons %}{% set outer = loop %}{% for label, cb in row %}
+        <button type="button"{% if outer.first and loop.first %} class="primary"{% endif %} data-cb="{{ cb }}" aria-label="{{ label }} : {{ p.task_title }}">{{ label }}</button>
+        {% endfor %}{% endfor %}
+      </div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}

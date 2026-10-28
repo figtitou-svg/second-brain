@@ -1,6 +1,54 @@
-{# À trier (gabarit minimal, design complet à la Task 5) : événements proposés et tâches sans créneau. #}
-{% if not a_trier.events and not a_trier.tasks %}<p class="muted">Rien à trier.</p>{% endif %}
-{% if a_trier.events %}<h2>Événements proposés</h2>
-<ul>{% for e in a_trier.events %}<li>{{ e.title }}</li>{% endfor %}</ul>{% endif %}
-{% if a_trier.tasks %}<h2>Tâches à planifier</h2>
-<ul>{% for t in a_trier.tasks %}<li>{{ t.title }}</li>{% endfor %}</ul>{% endif %}
+{# À trier : rendez-vous détectés (à ajouter à l'agenda ou à ignorer) et tâches sans créneau (à planifier).
+   Heures déjà locales (Views.a_trier) ; couleur (--c) interne ; titres, lieux et étapes échappés.
+   Les émojis des boutons sont aria-hidden : chaque aria-label contient le texte visible (WCAG 2.5.3). #}
+{% set ev = a_trier.events %}{% set ts = a_trier.tasks %}
+{% if not ev and not ts %}
+<p class="muted empty-state">Rien à trier.</p>
+{% else %}
+<div class="sort-cols">
+<section class="sort-group" aria-labelledby="tri-ev-h">
+  <h2 id="tri-ev-h" class="sec-h">Rendez-vous détectés <span class="n">{{ ev|length }}</span></h2>
+  {% if ev %}
+  <ul class="sort-list">
+    {% for e in ev %}
+    <li class="rowcard evcard">
+      <h3 class="rtitle">{{ e.title }}</h3>
+      <p class="meta">
+        <span class="when">{{ e.start|fr_day }}</span>
+        <span class="when">{{ e.start|hm }} – {% if e.end.date() != e.start.date() %}{{ e.end|fr_day_short }} {% endif %}{{ e.end|hm }}</span>
+        {% if e.location %}<span><span aria-hidden="true">📍 </span>{{ e.location }}</span>{% endif %}
+      </p>
+      <div class="row-actions">
+        <button type="button" class="primary" data-cb="evadd:{{ e.event_id }}" aria-label="Ajouter à l'agenda : {{ e.title }}"><span aria-hidden="true">📅 </span>Ajouter à l'agenda</button>
+        <button type="button" data-cb="evign:{{ e.event_id }}" aria-label="Ignorer : {{ e.title }}">Ignorer</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted empty-state">Rien à trier.</p>{% endif %}
+</section>
+<section class="sort-group" aria-labelledby="tri-t-h">
+  <h2 id="tri-t-h" class="sec-h">Tâches à planifier <span class="n">{{ ts|length }}</span></h2>
+  {% if ts %}
+  <ul class="sort-list">
+    {% for t in ts %}
+    <li class="rowcard taskcard{% if t.overdue %} overdue{% endif %}" style="--c: {{ t.color }}">
+      <h3 class="rtitle">{{ t.title }}</h3>
+      <p class="meta">
+        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>
+        {% else %}<span>Sans échéance</span>{% endif %}
+        {% if t.minutes %}<span>⏱ {{ t.minutes|dur }}</span>{% endif %}
+        {% if t.step %}<span class="step">Étape : {{ t.step }}</span>{% endif %}
+      </p>
+      <div class="row-actions">
+        <button type="button" class="primary" data-cb="plan:{{ t.task_id }}" aria-label="Planifier : {{ t.title }}"><span aria-hidden="true">✅ </span>Planifier</button>
+        <button type="button" data-cb="dur:{{ t.task_id }}" aria-label="Durée : {{ t.title }}"><span aria-hidden="true">⏱ </span>Durée</button>
+        <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Ignorer : {{ t.title }}">Ignorer</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted empty-state">Rien à trier.</p>{% endif %}
+</section>
+</div>
+{% endif %}
