@@ -6,12 +6,13 @@ import hashlib
 import logging
 import threading
 import time
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import project_watch, projects
 from coach.db import Database
+from coach.models import Task
 
 log = logging.getLogger("web.data")
 
@@ -209,3 +210,144 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
     overdue = sum(1 for t in open_tasks if t.due is not None and t.due < now)
     return Home(now, ws, we, round(_pct(now, ws, we), 2), now_card, segments, focus, rings,
                 Counters(len(open_tasks), overdue, suggestions))
+
+
+# --- étape 2 : Agenda et Récap semaine -------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AgendaItem:
+    kind: str                 # block | course | event
+    title: str
+    color: str
+    start: datetime
+    end: datetime
+    top: float                # % de la fenêtre, rogné
+    height: float
+    lane: int = 0
+    lanes: int = 1
+    block_id: str | None = None   # seulement pour un bloc ouvert (boutons Fait / Reporter)
+
+
+@dataclass(frozen=True)
+class DueItem:
+    title: str
+    at: datetime
+    color: str
+    task_id: str
+
+
+@dataclass(frozen=True)
+class DayView:
+    day: date
+    window_start: datetime
+    window_end: datetime
+    items: list[AgendaItem]
+    dues: list[DueItem]
+
+
+def week_start(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _window(sched, day: date) -> tuple[datetime, datetime]:
+    hours = sched.rules.allowed_hours.weekend if day.weekday() >= 5 else sched.rules.allowed_hours.weekday
+    return (datetime.combine(day, hours.start, tzinfo=sched.tz), datetime.combine(day, hours.end, tzinfo=sched.tz))
+
+
+def _lanes(items: list[AgendaItem]) -> list[AgendaItem]:
+    """Répartit les éléments qui se chevauchent sur des colonnes distinctes (greedy, par groupes de chevauchement)."""
+    out: list[AgendaItem] = []
+    group: list[tuple[AgendaItem, int]] = []
+    group_end: datetime | None = None
+
+    def flush() -> None:
+        n = max((lane for _, lane in group), default=-1) + 1
+        out.extend(replace(i, lane=lane, lanes=n) for i, lane in group)
+        group.clear()
+
+    for it in sorted(items, key=lambda i: (i.start, i.end)):
+        if group_end is not None and it.start >= group_end:
+            flush()
+            group_end = None
+        used = {lane for g, lane in group if g.end > it.start}
+        lane = next(n for n in range(len(group) + 1) if n not in used)
+        group.append((it, lane))
+        group_end = max(group_end, it.end) if group_end else it.end
+    flush()
+    return out
+
+
+def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
+    ws, we = _window(sched, day)
+    colors = project_colors(db)
+    tasks = {t.id: t for t in db.list_tasks()}
+    items: list[AgendaItem] = []
+
+    def add(kind: str, title: str, color: str, s: datetime, e: datetime, block_id: str | None = None) -> None:
+        s2, e2 = max(s, ws), min(e, we)
+        if e2 <= s2:
+            return
+        top = _pct(s2, ws, we)
+        items.append(AgendaItem(kind, title, color, s, e, round(top, 2), round(_pct(e2, ws, we) - top, 2),
+                                block_id=block_id))
+
+    for b in db.list_blocks():
+        t = tasks.get(b.task_id)
+        if t is None or b.outcome not in (None, "done"):
+            continue
+        add("block", t.title, _color(colors, t.project_id), b.start, b.end, b.id if b.outcome is None else None)
+    for e in db.list_events("added"):
+        add("event", e.title, COURSE, e.start, e.end)
+    for s, e, title in agenda.get(ws, we):
+        add("course", title, COURSE, s, e)
+    dues = [DueItem(t.title, t.due, _color(colors, t.project_id), t.id)
+            for t in sorted(tasks.values(), key=lambda t: t.due or ws)
+            if t.status in projects.OPEN and t.due is not None and t.due.astimezone(sched.tz).date() == day]
+    return DayView(day, ws, we, _lanes(items), dues)
+
+
+def agenda_week(db: Database, sched, agenda: AgendaCache, monday: date) -> list[DayView]:
+    return [agenda_day(db, sched, agenda, monday + timedelta(days=i)) for i in range(7)]
+
+
+@dataclass(frozen=True)
+class SummaryRow:
+    name: str
+    color: str
+    minutes: int
+    percent: int              # % de la ligne la plus longue
+
+
+@dataclass(frozen=True)
+class WeekSummary:
+    rows: list[SummaryRow]
+    total_minutes: int
+    worked_tasks: int         # tâches distinctes avec au moins un bloc terminé sur la période
+    finished_tasks: int       # parmi elles, celles dont le statut est « done »
+    late: list[Task]
+    upcoming: list[Task]
+
+
+def week_summary(db: Database, now: datetime) -> WeekSummary:
+    start = now - timedelta(days=7)
+    tasks = {t.id: t for t in db.list_tasks()}
+    names = {p.id: p.name for p in db.list_projects()}
+    colors = project_colors(db)
+    minutes: dict[str | None, int] = {}
+    worked: set[str] = set()
+    for b in db.list_blocks():
+        t = tasks.get(b.task_id)
+        if b.outcome != "done" or t is None or not (start <= b.end <= now):
+            continue
+        key = t.project_id if t.project_id in names else None
+        minutes[key] = minutes.get(key, 0) + b.minutes
+        worked.add(t.id)
+    top = max(minutes.values(), default=0)
+    rows = [SummaryRow(names.get(k, "Sans projet") if k else "Sans projet", _color(colors, k), m,
+                       round(m * 100 / top) if top else 0)
+            for k, m in sorted(minutes.items(), key=lambda kv: -kv[1])]
+    open_dated = [t for t in tasks.values() if t.status in projects.OPEN and t.due is not None]
+    late = sorted((t for t in open_dated if t.due < now), key=lambda t: t.due)
+    upcoming = sorted((t for t in open_dated if now <= t.due < now + timedelta(days=7)), key=lambda t: t.due)
+    return WeekSummary(rows, sum(minutes.values()), len(worked),
+                       sum(1 for i in worked if tasks[i].status == "done"), late, upcoming)
