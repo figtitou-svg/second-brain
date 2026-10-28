@@ -128,3 +128,22 @@ def test_db_not_created_yet_then_set_like_run_py():
     assert notify("après") is True
     assert sent == ["alerte de démarrage", "après"]
     assert [r.text for r in holder["db"].list_notifications()] == ["après"]
+
+
+def test_send_before_the_database_exists_is_silent_and_untouched(caplog):
+    sent = []
+    send = notifylog.logged(lambda t, b=None: sent.append(t) or True, lambda: None, lambda c: c)
+    assert send("alerte de démarrage") is True
+    assert sent == ["alerte de démarrage"]
+    assert not caplog.records
+
+
+def test_badge_computed_before_an_invalidation_is_not_kept():
+    from web.server import BadgeCache
+    cache = BadgeCache()
+    started = cache.generation
+    cache.invalidate()                      # une action réussit pendant le calcul
+    cache.put({"a_trier": 3}, started)
+    assert cache.get() is None
+    cache.put({"a_trier": 2}, cache.generation)
+    assert cache.get() == {"a_trier": 2}

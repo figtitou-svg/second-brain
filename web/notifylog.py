@@ -24,8 +24,11 @@ def logged(notify: Callable[..., Any], get_db: Callable[[], Any], translate: Cal
 
     def record(text: str, buttons: Any, delivered: bool) -> None:
         try:
+            db = get_db()
+            if db is None:
+                return                  # avant l'ouverture de la base (alerte de démarrage) : rien à journaliser
             shown = [[(label, translate(cb)) for label, cb in row] for row in _rows(buttons)]
-            get_db().log_notification(text, shown, delivered, now())
+            db.log_notification(text, shown, delivered, now())
         except Exception:  # noqa: BLE001 - le journal ne doit JAMAIS gêner l'envoi
             log.warning("journal des notifications : enregistrement impossible", exc_info=True)
 

@@ -59,16 +59,20 @@ class BadgeCache:
         self.clock, self.ttl = clock, ttl
         self._value: dict | None = None
         self._at = 0.0
+        self.generation = 0
 
     def get(self) -> dict | None:
         if self._value is not None and self.clock() - self._at < self.ttl:
             return self._value
         return None
 
-    def put(self, value: dict) -> None:
+    def put(self, value: dict, generation: int | None = None) -> None:
+        if generation is not None and generation != self.generation:
+            return                      # une action a vidé le cache pendant le calcul : valeur périmée
         self._value, self._at = value, self.clock()
 
     def invalidate(self) -> None:
+        self.generation += 1
         self._value = None
 
 
@@ -193,13 +197,14 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
             return cached
         if deps.views is None:
             return {}
+        generation = badge_cache.generation
         try:
             value = await blocking(deps.views.badges)
         except Exception:  # noqa: BLE001 - la page reste servie, sans pastilles
             log.warning("pastilles du menu illisibles", exc_info=True)
             return {}
         value = value if isinstance(value, dict) else {}
-        badge_cache.put(value)
+        badge_cache.put(value, generation)
         return value
 
     def locked() -> float:

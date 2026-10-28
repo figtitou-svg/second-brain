@@ -620,7 +620,7 @@ class Views:
         return suggestions_view(self.db)
 
     def notifications(self, limit: int = 200) -> list["DayGroup"]:
-        return notification_groups(self.db, self.sched.tz, limit)
+        return notification_groups(self.db, self.sched.tz, limit, self.now() - timedelta(days=30))
 
     def notes(self, query: str = "") -> dict:
         q = clean_query(query)
@@ -638,7 +638,7 @@ class Views:
     def _note(self, cls, d: dict):
         at = d.get("created_at")
         if isinstance(at, datetime) and at.tzinfo is None:
-            at = at.replace(tzinfo=self.sched.tz)      # la mémoire stocke l'heure locale de la VM, sans fuseau
+            at = at.astimezone(self.sched.tz)      # la mémoire stocke l'heure locale de la VM, sans fuseau
         fields = dict(id=d["id"], title=d.get("title") or "", kind=d.get("kind") or "", sensitivity=d.get("sensitivity") or "",
                       source=d.get("source") or "", created_at=at, folder=d.get("folder"), excerpt=d.get("excerpt") or "")
         if cls is NoteFull:
@@ -816,10 +816,10 @@ def suggestions_view(db: Database) -> dict:
     return {"batches": batches, "lots": lots, "proposals": proposals, "total": total}
 
 
-def notification_groups(db: Database, tz, limit: int = 200) -> list[DayGroup]:
+def notification_groups(db: Database, tz, limit: int = 200, since: datetime | None = None) -> list[DayGroup]:
     groups: list[DayGroup] = []
     last: date | None = None
-    for n in db.list_notifications(limit):
+    for n in db.list_notifications(limit, since):
         at = n.sent_at.astimezone(tz)
         if at.date() != last:
             groups.append(DayGroup(fmt.day_long(at), []))
