@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
+from coach import fmt
 from coach import project_service, project_watch, projects
 from coach.db import Database
 from coach.models import Suggestion, Task
@@ -559,10 +560,11 @@ def project_detail(db: Database, project_id: str, now: datetime) -> ProjectDetai
 class Views:
     """Ce que lisent les pages « Organisation » : une méthode par page, le temps injectable pour les tests."""
 
-    def __init__(self, db: Database, sched, agenda_cache: AgendaCache, clock: Callable[[], datetime] | None = None
-                 ) -> None:
+    def __init__(self, db: Database, sched, agenda_cache: AgendaCache, clock: Callable[[], datetime] | None = None,
+                 notes=None) -> None:
         self.db, self.sched, self.agenda_cache = db, sched, agenda_cache
         self._clock = clock
+        self.notes_provider = notes     # recent(limit) / search(query, k) / get(doc_id), ou None
 
     def now(self) -> datetime:
         return (self._clock() if self._clock else self.sched.now()).astimezone(self.sched.tz)
@@ -601,3 +603,189 @@ class Views:
         def local(ts: list[Task]) -> list[Task]:
             return [t.model_copy(update={"due": t.due.astimezone(tz)}) for t in ts]
         return replace(w, late=local(w.late), upcoming=local(w.upcoming))
+
+    # --- étape 3 : À trier, Suggestions, Notifications, Notes, pastilles ---------------------------------
+
+    def a_trier(self) -> dict:
+        return {"events": event_rows(self.db), "tasks": unplanned_tasks(self.db, self.now())}
+
+    def suggestions(self) -> dict:
+        return suggestions_view(self.db)
+
+    def notifications(self, limit: int = 200) -> list["DayGroup"]:
+        return notification_groups(self.db, self.sched.tz, limit)
+
+    def notes(self, query: str = "") -> dict:
+        q = clean_query(query)
+        if self.notes_provider is None:
+            return {"query": q, "docs": [], "searched": False}
+        raw = self.notes_provider.search(q, 30) if q else self.notes_provider.recent(50)
+        return {"query": q, "docs": [self._note(NoteRow, d) for d in raw], "searched": bool(q)}
+
+    def note(self, doc_id: str) -> "NoteFull | None":
+        if self.notes_provider is None:
+            return None
+        d = self.notes_provider.get(doc_id)
+        return self._note(NoteFull, d) if d else None
+
+    def _note(self, cls, d: dict):
+        at = d.get("created_at")
+        if isinstance(at, datetime) and at.tzinfo is None:
+            at = at.replace(tzinfo=self.sched.tz)      # la mémoire stocke l'heure locale de la VM, sans fuseau
+        fields = dict(id=d["id"], title=d.get("title") or "", kind=d.get("kind") or "", sensitivity=d.get("sensitivity") or "",
+                      source=d.get("source") or "", created_at=at, folder=d.get("folder"), excerpt=d.get("excerpt") or "")
+        if cls is NoteFull:
+            fields["body"] = d.get("body") or ""
+        return cls(**fields)
+
+    def badges(self) -> dict:
+        """Pastilles du menu : quelques requêtes, jamais d'exception (menu vide plutôt qu'une page en erreur)."""
+        try:
+            now = self.now()
+            return {"a_trier": len(self.db.list_events("proposed")) + len(unplanned_tasks(self.db, now)),
+                    "suggestions": self.suggestions()["total"],
+                    "taches": len(self.db.list_tasks("pending", "scheduled")),
+                    "projets_alerte": any(c.alert for c in project_cards(self.db, now))}
+        except Exception:  # noqa: BLE001
+            log.warning("pastilles du menu illisibles", exc_info=True)
+            return {}
+
+
+@dataclass(frozen=True)
+class EventRow:
+    event_id: str
+    title: str
+    start: datetime
+    end: datetime
+    location: str | None
+
+
+@dataclass(frozen=True)
+class BatchItem:
+    suggestion_id: str
+    title: str
+    minutes: int
+    step: str | None
+
+
+@dataclass(frozen=True)
+class BatchView:
+    project_id: str
+    project_name: str
+    color: str
+    batch_id: str
+    items: list[BatchItem]
+
+
+@dataclass(frozen=True)
+class LotRowView:
+    task_id: str
+    title: str
+    step: str
+
+
+@dataclass(frozen=True)
+class LotView:
+    project_id: str
+    project_name: str
+    color: str
+    rows: list[LotRowView]
+
+
+@dataclass(frozen=True)
+class ProposalView:
+    task_id: str
+    task_title: str
+    text: str
+    buttons: list
+
+
+@dataclass(frozen=True)
+class NotificationRow:
+    at: datetime
+    text: str
+    buttons: list
+    delivered: bool
+
+
+@dataclass(frozen=True)
+class DayGroup:
+    label: str
+    items: list[NotificationRow]
+
+
+@dataclass(frozen=True)
+class NoteRow:
+    id: str
+    title: str
+    kind: str
+    sensitivity: str
+    source: str
+    created_at: datetime | None
+    folder: str | None
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class NoteFull(NoteRow):
+    body: str = ""
+
+
+def clean_query(query: str | None) -> str:
+    q = "".join(c if c.isprintable() else " " for c in (query or ""))
+    return " ".join(q.split())[:200]
+
+
+def event_rows(db: Database) -> list[EventRow]:
+    return [EventRow(e.id, e.title, e.start, e.end, e.location) for e in db.list_events("proposed")]
+
+
+def unplanned_tasks(db: Database, now: datetime) -> list[TaskRow]:
+    """Tâches `pending` sans bloc ouvert, par échéance (sans échéance en dernier)."""
+    placed = {b.task_id for b in db.list_blocks(open_only=True)}
+    todo = [t for t in db.list_tasks("pending") if t.id not in placed]
+    colors = project_colors(db)
+    steps = {m.id: m.title for p in db.list_projects() for m in db.list_milestones(p.id)}
+    return [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
+                    steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+            for t in sorted(todo, key=lambda t: (t.due is None, t.due or now, t.title))]
+
+
+def suggestions_view(db: Database) -> dict:
+    colors = project_colors(db)
+    batches: list[BatchView] = []
+    lots: list[LotView] = []
+    for p in db.list_projects("active"):
+        steps = {m.id: m.title for m in db.list_milestones(p.id)}
+        batch = db.pending_batch(p.id)
+        items = [BatchItem(s.id, s.title, s.estimated_minutes, steps.get(s.milestone_id) if s.milestone_id else None)
+                 for s in (db.list_batch(batch) if batch else []) if s.state == "proposed"]
+        if items:
+            batches.append(BatchView(p.id, p.name, _color(colors, p.id), batch, items))
+        rows = []
+        for r in db.list_lot_proposals(p.id):
+            task = db.get_task(r["task_id"])
+            if r["state"] == "lot" and task is not None and r["milestone_id"] in steps:
+                rows.append(LotRowView(task.id, task.title, steps[r["milestone_id"]]))
+        if rows:
+            lots.append(LotView(p.id, p.name, _color(colors, p.id), rows))
+    proposals: list[ProposalView] = []
+    for prop in db.list_proposals("proposed"):
+        card = project_service.proposal_card(db, prop["task_id"])
+        task = db.get_task(prop["task_id"])
+        if card is not None and task is not None:
+            proposals.append(ProposalView(task.id, task.title, card[0], card[1]))
+    total = sum(len(b.items) for b in batches) + sum(len(l.rows) for l in lots) + len(proposals)
+    return {"batches": batches, "lots": lots, "proposals": proposals, "total": total}
+
+
+def notification_groups(db: Database, tz, limit: int = 200) -> list[DayGroup]:
+    groups: list[DayGroup] = []
+    last: date | None = None
+    for n in db.list_notifications(limit):
+        at = n.sent_at.astimezone(tz)
+        if at.date() != last:
+            groups.append(DayGroup(fmt.day_long(at), []))
+            last = at.date()
+        groups[-1].items.append(NotificationRow(at, n.text, n.buttons, n.delivered))
+    return groups
