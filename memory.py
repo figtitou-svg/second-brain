@@ -119,6 +119,83 @@ def _search(question: str, k: int = 5) -> list[tuple[str, str, str]]:
     return rows
 
 
+_EXCERPT = 240
+_COLS = "id,title,kind,sensitivity,source,created_at,folder,body"
+
+
+def _flat(text: str | None, limit: int = _EXCERPT) -> str:
+    return " ".join((text or "").split())[:limit]
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _row(r, with_body: bool = False) -> dict:
+    body = r[7] or ""
+    d = {"id": r[0], "title": r[1], "kind": r[2], "sensitivity": r[3], "source": r[4],
+         "created_at": _parse_dt(r[5]), "folder": r[6], "excerpt": _flat(body)}
+    if with_body:
+        d["body"] = body
+    return d
+
+
+def recent_docs(limit: int = 50, kind: str | None = None) -> list[dict]:
+    """Lecture seule : documents les plus récents d'abord (created_at puis rowid)."""
+    sql, params = f"SELECT {_COLS} FROM docs", ()
+    if kind:
+        sql, params = sql + " WHERE kind=?", (kind,)
+    try:
+        with _lock:
+            rows = _db().execute(sql + " ORDER BY created_at DESC, rowid DESC LIMIT ?",
+                                 (*params, max(1, min(int(limit), 500)))).fetchall()
+    except sqlite3.Error:
+        log.warning("lecture des notes impossible", exc_info=True)
+        return []
+    return [_row(r) for r in rows]
+
+
+def get_doc(doc_id: str) -> dict | None:
+    """Lecture seule : un document avec son texte intégral, ou None."""
+    try:
+        with _lock:
+            r = _db().execute(f"SELECT {_COLS} FROM docs WHERE id=?", (doc_id,)).fetchone()
+    except sqlite3.Error:
+        log.warning("lecture d'une note impossible", exc_info=True)
+        return None
+    return _row(r, with_body=True) if r else None
+
+
+def search_docs(query: str, k: int = 20) -> list[dict]:
+    """Recherche plein texte en lecture seule ; le MATCH n'est fait que de mots échappés entre guillemets."""
+    words = [w for w in re.findall(r"\w{3,}", (query or "")[:500].lower()) if w not in STOPWORDS][:12]
+    if not words:
+        return []
+    match = " OR ".join('"' + w.replace('"', '""') + '"' for w in words)
+    try:
+        with _lock:
+            rows = _db().execute(
+                """SELECT d.id,d.title,d.kind,d.sensitivity,d.source,d.created_at,d.folder,substr(d.body,1,3000)
+                   FROM docs_fts f JOIN docs d ON d.rowid=f.rowid WHERE docs_fts MATCH ?
+                   ORDER BY bm25(docs_fts) LIMIT ?""", (match, max(1, min(int(k), 100)))).fetchall()
+    except sqlite3.Error:
+        log.warning("recherche de notes impossible", exc_info=True)
+        return []
+    out = []
+    for r in rows:
+        d = _row(r)
+        body = r[7] or ""
+        low = body.lower()
+        first = min((i for i in (low.find(w) for w in words) if i >= 0), default=-1)
+        if first > 60:
+            d["excerpt"] = "…" + _flat(body[first - 60:], _EXCERPT - 1)
+        out.append(d)
+    return out
+
+
 def _now_line() -> str:
     from datetime import datetime
     from zoneinfo import ZoneInfo
