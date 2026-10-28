@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import urllib.request
+from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
@@ -28,7 +29,7 @@ from coach.calendar_client import GoogleCalendarClient  # noqa: E402
 from coach.db import Database  # noqa: E402
 from coach.rules import load_rules  # noqa: E402
 from coach.scheduler import CoachScheduler  # noqa: E402
-from web import data as web_data, server as web_server, system as web_system  # noqa: E402
+from web import data as web_data, notifylog, server as web_server, system as web_system  # noqa: E402
 
 log = logging.getLogger("run")
 
@@ -95,12 +96,17 @@ def main() -> None:
     logging.getLogger().addHandler(errors)
 
     cfg = load_config()
-    notify = _telegram_notify(cfg.token, cfg.allowed_user_id)
+    db = Database()
+    # l'unique `notify` du programme : envoie via Telegram et journalise (sans jamais gêner l'envoi)
+    notify = notifylog.logged(_telegram_notify(cfg.token, cfg.allowed_user_id), lambda: db, _tr)
+    try:
+        db.purge_notifications(datetime.now(notifylog.TZ) - timedelta(days=30))
+    except Exception:  # noqa: BLE001 - la purge ne doit pas empêcher le démarrage
+        log.warning("journal des notifications : purge impossible", exc_info=True)
     hl = health.Health(notify)
     health.set_instance(hl)
     health.startup_check(notify)
 
-    db = Database()
     sched = CoachScheduler(db, GoogleCalendarClient.from_env(), load_rules(), notify)
     store.configure(db, sched)
     from llm_router import router  # l'IA ne sert qu'à reformuler la raison du focus (sinon raison calculée)

@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import date, datetime
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from coach.models import Block, Event, Milestone, Project, Suggestion, Task
@@ -61,6 +62,13 @@ CREATE TABLE IF NOT EXISTS extraction_cache (
 CREATE TABLE IF NOT EXISTS notifications (
   key TEXT PRIMARY KEY,
   sent_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS notifications_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sent_at TEXT NOT NULL,
+  text TEXT NOT NULL,
+  buttons TEXT NOT NULL,
+  delivered INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS subject_weights (
   subject TEXT PRIMARY KEY,
@@ -122,6 +130,20 @@ CREATE TABLE IF NOT EXISTS project_suggestions (
 
 def _dt(s: str | None) -> datetime | None:
     return datetime.fromisoformat(s) if s else None
+
+
+@dataclass(frozen=True)
+class LoggedNotification:
+    id: int
+    sent_at: datetime
+    text: str
+    buttons: list[list[tuple[str, str]]]
+    delivered: bool
+
+
+def _utc(d: datetime) -> str:
+    """Instant en UTC (ISO) : l'ordre et les comparaisons restent justes au changement d'heure."""
+    return d.astimezone(timezone.utc).isoformat()
 
 
 class Database:
@@ -294,6 +316,25 @@ class Database:
 
     def release_notification(self, key: str) -> None:
         self._exec("DELETE FROM notifications WHERE key=?", (key,))
+
+    # --- journal des messages envoyés par le bot ----------------------------------
+    def log_notification(self, text: str, buttons: list, delivered: bool, at: datetime) -> None:
+        self._exec("INSERT INTO notifications_log (sent_at,text,buttons,delivered) VALUES (?,?,?,?)",
+                   (_utc(at), text, json.dumps(buttons, ensure_ascii=False), int(bool(delivered))))
+
+    def list_notifications(self, limit: int = 200, since: datetime | None = None) -> list[LoggedNotification]:
+        rows = (self._query("SELECT * FROM notifications_log WHERE sent_at >= ? ORDER BY sent_at DESC, id DESC LIMIT ?",
+                            (_utc(since), limit)) if since else
+                self._query("SELECT * FROM notifications_log ORDER BY sent_at DESC, id DESC LIMIT ?", (limit,)))
+        return [LoggedNotification(r["id"], datetime.fromisoformat(r["sent_at"]), r["text"],
+                                   [[(a, b) for a, b in row] for row in json.loads(r["buttons"])], bool(r["delivered"]))
+                for r in rows]
+
+    def purge_notifications(self, older_than: datetime) -> int:
+        return self._exec("DELETE FROM notifications_log WHERE sent_at < ?", (_utc(older_than),)).rowcount
+
+    def list_proposals(self, state: str = "proposed") -> list[dict]:
+        return [dict(r) for r in self._query("SELECT * FROM project_proposals WHERE state=? ORDER BY rowid", (state,))]
 
     # --- importance (focus du jour) ---------------------------------------------
     def set_task_boost(self, task_id: str, boost: int) -> None:
