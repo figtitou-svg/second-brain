@@ -30,6 +30,13 @@ MAX_FAILS, LOCK_SECONDS = 5, 15 * 60
 COOKIE = "sb_session"
 SECRET_PATH = Path("data") / "web_secret"
 UNAVAILABLE = "Cette section est indisponible pour le moment."
+BIND_RETRY_SECONDS, BIND_RETRY_MAX = 30, 20   # adresse pas encore prête (Tailscale au démarrage) : 10 min d'essais
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                               "img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _COOKIE_VALUE = re.compile(r"([0-9]{1,12})\.([0-9a-f]{32})\.([0-9a-f]{64})")
 
@@ -95,6 +102,10 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     def error_fragment(request: web.Request, message: str = UNAVAILABLE) -> web.Response:
         return page("_error.html", request, message=message)
 
+    def error_page(request: web.Request, message: str = UNAVAILABLE) -> web.Response:
+        """Erreur d'une page entière : dans la mise en page (menu compris), pas un fragment nu."""
+        return page("error.html", request, message=message)
+
     async def blocking(fn: Callable, *args: Any) -> Any:
         return await asyncio.get_running_loop().run_in_executor(None, fn, *args)
 
@@ -148,13 +159,14 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         resp.del_cookie(COOKIE, path="/")
         raise resp
 
-    async def section(request: web.Request, template: str, fn: Callable, key: str) -> web.Response:
+    async def section(request: web.Request, template: str, fn: Callable, key: str,
+                      full_page: bool = False) -> web.Response:
         try:
             value = await blocking(fn)
             return page(template, request, **{key: value})
         except Exception:  # noqa: BLE001 - une section en panne n'empêche pas les autres
             log.exception("section web %s illisible", key)
-            return error_fragment(request)
+            return error_page(request) if full_page else error_fragment(request)
 
     async def home(request: web.Request) -> web.Response:
         try:
@@ -178,7 +190,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         def gather() -> dict:
             return {"machine": deps.machine(), "errors": deps.errors.entries()[:20],
                     "components": deps.components(), "quota": deps.quota()}
-        return await section(request, "system.html", gather, "sys")
+        return await section(request, "system.html", gather, "sys", full_page=True)
 
     async def say(request: web.Request) -> web.Response:
         text = str((await request.post()).get("text", ""))
@@ -195,7 +207,12 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         reply = await blocking(actions.click, deps.svc, data)
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
 
+    async def security_headers(request: web.Request, response: web.StreamResponse) -> None:
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+
     app = web.Application()
+    app.on_response_prepare.append(security_headers)
     app.add_routes([
         web.get("/login", login_form), web.post("/login", login), web.post("/logout", protected(logout)),
         web.get("/", protected(home)), web.get("/fragment/home", protected(home_fragment)),
@@ -207,34 +224,70 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
 
 
 class WebThread(threading.Thread):
-    def __init__(self, app: web.Application, host: str, port: int) -> None:
+    """Fil de la page web. Si l'adresse n'est pas encore disponible (Tailscale pas prêt au démarrage de la VM,
+    port pris), il réessaie toutes les `retry_seconds` secondes, `retry_max` fois, sans jamais gêner le bot.
+    `ready` est levé après le premier essai ; `serving` quand le serveur écoute."""
+
+    def __init__(self, app: web.Application, host: str, port: int, retry_seconds: float | None = None,
+                 retry_max: int | None = None) -> None:
         super().__init__(name="web", daemon=True)
         self.app, self.host, self.port = app, host, port
+        self.retry_seconds = BIND_RETRY_SECONDS if retry_seconds is None else retry_seconds
+        self.retry_max = BIND_RETRY_MAX if retry_max is None else retry_max
         self.ready = threading.Event()
+        self.serving = threading.Event()
         self.started_ok = False
+        self.retrying = False
+        self.loop: asyncio.AbstractEventLoop | None = None
 
-    def run(self) -> None:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
+    async def _bind(self) -> web.AppRunner | None:
+        for attempt in range(self.retry_max + 1):
             runner = web.AppRunner(self.app, access_log=None)
-            loop.run_until_complete(runner.setup())
-            site = web.TCPSite(runner, self.host, self.port)
-            loop.run_until_complete(site.start())
+            try:
+                await runner.setup()
+                await web.TCPSite(runner, self.host, self.port).start()
+            except Exception as exc:  # noqa: BLE001 - le bot continue sans la page web
+                await runner.cleanup()
+                if attempt < self.retry_max:
+                    log.warning("page web : http://%s:%d indisponible (%s) ; nouvelle tentative dans %g s (%d/%d)",
+                                self.host, self.port, exc, self.retry_seconds, attempt + 1, self.retry_max)
+                    self.retrying = True
+                    self.ready.set()
+                    await asyncio.sleep(self.retry_seconds)
+                    continue
+                log.error("page web : abandon après %d essais, http://%s:%d reste indisponible (%s)",
+                          attempt + 1, self.host, self.port, exc)
+                self.retrying = False
+                self.ready.set()
+                return None
             self.port = runner.addresses[0][1]   # port réel (0 en test)
             log.info("page web : http://%s:%d", self.host, self.port)
-        except Exception:  # noqa: BLE001 - le bot continue sans la page web
-            log.exception("page web : démarrage impossible")
+            self.started_ok, self.retrying = True, False
+            self.serving.set()
+            self.ready.set()
+            return runner
+        return None
+
+    def run(self) -> None:
+        self.loop = loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            runner = loop.run_until_complete(self._bind())
+            if runner is not None:
+                try:
+                    loop.run_forever()
+                finally:
+                    loop.run_until_complete(runner.cleanup())   # arrêt propre (loop.stop) : connexions fermées
+        except Exception:  # noqa: BLE001 - jamais de trace qui remonte au bot
+            log.exception("page web : arrêt inattendu")
+        finally:
             self.ready.set()
             loop.close()
-            return
-        self.started_ok = True
-        self.ready.set()
-        loop.run_forever()
 
 
 def start(deps: Deps | None, env: Mapping[str, str] | None = None, app: web.Application | None = None) -> WebThread | None:
-    """Démarre la page web dans un fil démon ; None (bot intact) si WEB_PASSWORD manque ou si le port est pris."""
+    """Démarre la page web dans un fil démon ; None (bot intact) si WEB_PASSWORD manque ou si le démarrage échoue
+    sans nouvelle tentative prévue. Si le premier essai échoue, le fil (vivant) réessaie en arrière-plan."""
     env = os.environ if env is None else env
     password = env.get("WEB_PASSWORD", "").strip()
     if not password:
@@ -250,6 +303,10 @@ def start(deps: Deps | None, env: Mapping[str, str] | None = None, app: web.Appl
         return None
     thread = WebThread(app, host, port)
     thread.start()
-    if not thread.ready.wait(10) or not thread.started_ok:
-        return None
-    return thread
+    thread.ready.wait(10)            # résultat du premier essai seulement : les suivants ne bloquent pas le bot
+    if thread.started_ok:
+        return thread
+    if thread.retrying and thread.is_alive():
+        log.warning("page web : nouvelle tentative toutes les %g s en arrière-plan", thread.retry_seconds)
+        return thread
+    return None

@@ -16,9 +16,10 @@
     <text x="37" y="54" class="small" aria-hidden="true">min</text>
   </svg>
   <div class="what">
-    <div class="muted">{{ "Maintenant" if c.current else "À " ~ c.start.strftime("%Hh%M") }}</div>
+    {% set today = home.now.date() %}
+    <div class="muted">{% if c.current %}Maintenant{% elif c.start.astimezone(home.now.tzinfo).date() == today %}À {{ c.start.strftime("%Hh%M") }}{% else %}Bientôt{% endif %}</div>
     <div class="title">{{ c.title }}</div>
-    {% if c.next_title %}<div class="muted next">Ensuite {{ c.next_start.strftime("%Hh%M") }} · {{ c.next_title }}</div>{% endif %}
+    {% if c.next_title and c.next_start and c.next_start.astimezone(home.now.tzinfo).date() == today %}<div class="muted next">Ensuite {{ c.next_start.strftime("%Hh%M") }} · {{ c.next_title }}</div>{% endif %}
     {% if c.current %}
     <div class="actions"><button type="button" data-cb="ok:{{ c.block_id }}">Fait</button><button type="button" data-cb="rep:{{ c.block_id }}">Reporter</button></div>
     {% endif %}

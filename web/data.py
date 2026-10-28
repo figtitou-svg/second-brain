@@ -64,6 +64,9 @@ class AgendaCache:
             value = hit[1] if hit else []
             expires = self.clock() + self.retry   # l'échec est mémorisé : pas de nouvel appel à chaque rechargement
         with self._mutex:
+            now = self.clock()
+            for k in [k for k, (exp, _) in self._cache.items() if k != key and exp <= now]:
+                del self._cache[k]   # plages périmées (jours passés) : le dict ne grossit pas indéfiniment
             self._cache[key] = (expires, value)
         return value
 
@@ -172,7 +175,8 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         if seg:
             segments.append(seg)
 
-    upcoming = [b for b in blocks if b.outcome is None and b.end > now]
+    # seulement les blocs d'aujourd'hui (commencés avant la fin de la plage du jour) : jamais celui de demain
+    upcoming = [b for b in blocks if b.outcome is None and b.end > now and b.start < we]
     now_card = None
     if upcoming:
         cur = upcoming[0]

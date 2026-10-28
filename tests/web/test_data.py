@@ -212,3 +212,66 @@ def test_agenda_cache_error_without_value_is_held_too():
     assert cache.get(s, e) == [] and cache.get(s, e) == [] and len(calls) == 1
     t[0] = 61
     assert cache.get(s, e) == [] and len(calls) == 2
+
+
+def _scheduled(db, title="Relire le rapport"):
+    t = Task(title=title, status="scheduled")
+    db.upsert_task(t)
+    return t
+
+
+def test_now_card_ignores_tomorrows_block():
+    db, sched, cache = env()
+    t = _scheduled(db)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 28, 9, 30), end=dt(2026, 10, 28, 10, 30)))
+    assert data.build_home(db, sched, cache, NOW).now_card is None
+
+
+def test_now_card_empty_in_the_evening_when_only_tomorrow_remains():
+    evening = dt(2026, 10, 27, 21, 30)
+    db, sched, cache = env(now=evening)
+    t = _scheduled(db)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 27, 9, 30), end=dt(2026, 10, 27, 11)))
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 28, 9, 30), end=dt(2026, 10, 28, 10, 30)))
+    assert data.build_home(db, sched, cache, evening).now_card is None
+
+
+def test_now_card_keeps_block_started_before_the_window():
+    db, sched, cache = env()
+    t = _scheduled(db)
+    db.add_block(Block(task_id=t.id, start=dt(2026, 10, 27, 7, 30), end=dt(2026, 10, 27, 10, 45)))
+    card = data.build_home(db, sched, cache, NOW).now_card
+    assert card.current and card.minutes_left == 18
+
+
+def test_now_card_next_is_never_tomorrows_block():
+    db, sched, cache = env()
+    a, b = _scheduled(db, "Aujourd'hui"), _scheduled(db, "Demain")
+    db.add_block(Block(task_id=a.id, start=dt(2026, 10, 27, 9, 30), end=dt(2026, 10, 27, 11)))
+    db.add_block(Block(task_id=b.id, start=dt(2026, 10, 28, 9), end=dt(2026, 10, 28, 10)))
+    card = data.build_home(db, sched, cache, NOW).now_card
+    assert card.title == "Aujourd'hui" and card.next_title is None and card.next_start is None
+
+
+def test_home_template_prints_no_start_time_for_another_day():
+    import jinja2
+    from pathlib import Path
+    env_ = jinja2.Environment(loader=jinja2.FileSystemLoader(Path(data.__file__).parent / "templates"),
+                              autoescape=True)
+    card = data.NowCard(False, "Demain", data.NO_PROJECT, dt(2026, 10, 28, 9, 30), dt(2026, 10, 28, 10, 30),
+                        1380, 60, "b1", "Après", dt(2026, 10, 28, 11))
+    home = data.Home(NOW, dt(2026, 10, 27, 8), dt(2026, 10, 27, 22), 17.5, card, [], [], [],
+                     data.Counters(0, 0, 0))
+    html = env_.get_template("_home_body.html").render(home=home)
+    assert "09h30" not in html and "11h00" not in html and "Bientôt" in html
+
+
+def test_agenda_cache_prunes_expired_ranges_on_write():
+    t = [0.0]
+    cache = data.AgendaCache(lambda s, e: [], ttl=300, clock=lambda: t[0])
+    for day in (25, 26):
+        cache.get(dt(2026, 10, day, 8), dt(2026, 10, day, 22))
+    assert len(cache._cache) == 2
+    t[0] = 301
+    cache.get(dt(2026, 10, 27, 8), dt(2026, 10, 27, 22))
+    assert list(cache._cache) == [(dt(2026, 10, 27, 8), dt(2026, 10, 27, 22))]

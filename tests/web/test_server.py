@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import socket
+import time
 import urllib.request
 from pathlib import Path
 
@@ -23,7 +25,7 @@ PASSWORD = "mot-de-passe-de-test"
 NOW = dt(2026, 10, 27, 10, 27)
 
 
-def make_app(clock=None, svc=None, home_fn=None):
+def make_app(clock=None, svc=None, home_fn=None, machine_fn=None):
     db = Database(":memory:")
     cal = FakeCalendarClient()
     sched = CoachScheduler(db, cal, load_rules(FROZEN), lambda t, b=None: None, lambda: NOW)
@@ -31,7 +33,7 @@ def make_app(clock=None, svc=None, home_fn=None):
     deps = server.Deps(
         svc=svc,
         home=home_fn or (lambda: data.build_home(db, sched, data.AgendaCache(cal.agenda), NOW)),
-        machine=lambda: system.machine(),
+        machine=machine_fn or (lambda: system.machine()),
         errors=system.ErrorLog(),
         components=lambda: [],
         quota=lambda: "📊 <b>Quotas</b>")
@@ -348,3 +350,96 @@ def test_system_component_states_are_honest():
         assert "❌" in items["Gmail"] and "(1 échec)" in items["Gmail"] and "délai dépassé" in items["Gmail"]
         assert "❌" in items["Groq"] and "(3 échecs)" in items["Groq"] and "None" not in items["Groq"]
     run(app, scenario)
+
+
+def test_failing_system_page_keeps_the_layout():
+    def boom():
+        raise RuntimeError("/proc illisible")
+    app, _ = make_app(machine_fn=boom)
+
+    async def scenario(c):
+        await login(c)
+        r = await c.get("/systeme")
+        page = await r.text()
+        assert r.status == 200 and 'id="nav"' in page and "<!doctype html>" in page
+        assert "indisponible" in page and 'role="alert"' in page
+    run(app, scenario)
+
+
+def test_security_headers_on_every_response():
+    app, _ = make_app()
+
+    async def scenario(c):
+        responses = [await c.get("/login")]
+        responses.append(await login(c))                        # redirection 302
+        responses += [await c.get("/"), await c.get("/fragment/home"), await c.get("/static/app.css"),
+                      await c.get("/nexiste-pas")]
+        for r in responses:
+            csp = r.headers.get("Content-Security-Policy", "")
+            assert "default-src 'self'" in csp and "script-src 'self'" in csp, r.url
+            assert "frame-ancestors 'none'" in csp and "base-uri 'none'" in csp and "form-action 'self'" in csp
+            assert r.headers["X-Content-Type-Options"] == "nosniff"
+            assert r.headers["Referrer-Policy"] == "no-referrer"
+    run(app, scenario)
+
+
+def _occupied_port():
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):                   # Windows : personne d'autre ne peut s'y lier
+        holder.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    holder.bind(("127.0.0.1", 0))
+    holder.listen()
+    return holder, holder.getsockname()[1]
+
+
+def test_bind_retry_serves_once_the_port_is_freed(caplog):
+    caplog.set_level(logging.WARNING, "web.server")
+    holder, port = _occupied_port()
+    app, _ = make_app()
+    thread = server.WebThread(app, "127.0.0.1", port, retry_seconds=0.2, retry_max=20)
+    thread.start()
+    try:
+        assert thread.ready.wait(5) and not thread.started_ok and thread.retrying and thread.is_alive()
+        holder.close()
+        assert thread.serving.wait(10) and thread.started_ok
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/login", timeout=5) as r:
+            assert r.status == 200
+        assert "nouvelle tentative" in caplog.text
+    finally:
+        holder.close()
+        if thread.loop and not thread.loop.is_closed():
+            thread.loop.call_soon_threadsafe(thread.loop.stop)
+        thread.join(5)
+    assert not thread.is_alive() and thread.loop.is_closed()
+
+
+def test_bind_retry_gives_up_after_max_tries(caplog):
+    caplog.set_level(logging.WARNING, "web.server")
+    holder, port = _occupied_port()
+    try:
+        app, _ = make_app()
+        thread = server.WebThread(app, "127.0.0.1", port, retry_seconds=0.01, retry_max=3)
+        thread.start()
+        thread.join(10)
+    finally:
+        holder.close()
+    assert not thread.is_alive() and not thread.started_ok and thread.loop.is_closed()
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "nouvelle tentative" in r.getMessage()]
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR and "abandon" in r.getMessage()]
+    assert len(warnings) == 3 and len(errors) == 1
+
+
+def test_start_returns_the_retrying_thread_promptly(monkeypatch, caplog):
+    monkeypatch.setattr(server, "BIND_RETRY_SECONDS", 0.5)   # assez long pour que le fil réessaie encore
+    monkeypatch.setattr(server, "BIND_RETRY_MAX", 2)
+    holder, port = _occupied_port()
+    try:
+        app, _ = make_app()
+        t0 = time.monotonic()
+        thread = server.start(None, env={"WEB_PASSWORD": PASSWORD, "WEB_PORT": str(port)}, app=app)
+        assert thread is not None and time.monotonic() - t0 < 5
+        assert "nouvelle tentative" in caplog.text
+        thread.join(10)
+    finally:
+        holder.close()
+    assert not thread.is_alive() and thread.loop.is_closed()
