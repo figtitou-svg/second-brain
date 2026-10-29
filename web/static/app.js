@@ -197,26 +197,87 @@
     }
   }
 
+  // Son des messages : synthétisé par le navigateur (aucun fichier), deux notes douces à l'arrivée d'une réponse,
+  // une seule à l'envoi. Le navigateur n'autorise le son qu'après un geste : le contexte audio est donc créé
+  // au clic ou à l'envoi. Le bouton 🔔 le coupe ; le choix est retenu sur l'appareil.
+  const soundBtn = document.querySelector("[data-sound]");
+  let muted = false, audio = null;
+  try { muted = localStorage.getItem("sound") === "off"; } catch (e) { /* stockage indisponible : son activé */ }
+  const SEND = [[740, 0, 0.16]], RECEIVE = [[880, 0, 0.3], [1318.5, 0.12, 0.5]];
+  function unlockAudio() {
+    if (!soundBtn) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+    } catch (e) { audio = null; }
+  }
+  function chime(notes) {
+    if (muted || !audio) return;
+    try {
+      const t0 = audio.currentTime;
+      for (const [freq, at, len] of notes) {
+        const osc = audio.createOscillator(), gain = audio.createGain();
+        osc.type = "sine"; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0 + at);
+        gain.gain.exponentialRampToValueAtTime(0.1, t0 + at + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+        osc.connect(gain); gain.connect(audio.destination);
+        osc.start(t0 + at); osc.stop(t0 + at + len + 0.05);
+      }
+    } catch (e) { /* pas de son plutôt qu'une erreur */ }
+  }
+  function paintSound() {
+    if (!soundBtn) return;
+    soundBtn.textContent = muted ? "🔕" : "🔔";
+    soundBtn.setAttribute("aria-pressed", String(!muted));
+    soundBtn.setAttribute("aria-label", muted ? "Son des messages : coupé" : "Son des messages : activé");
+  }
+  soundBtn?.addEventListener("click", () => {
+    muted = !muted;
+    try { localStorage.setItem("sound", muted ? "off" : "on"); } catch (e) { /* retenu pour cette page seulement */ }
+    paintSound();
+    unlockAudio(); chime(RECEIVE);
+  });
+  paintSound();
+
   async function say(text, target) {
     const thread = target && document.querySelector(target);
-    // dans la Discussion : trois points à la place de la réponse, le temps que le bot réfléchisse
-    let waiting = null;
+    // dans la Discussion, comme un SMS : ton message part tout de suite, puis trois points le temps que le bot réponde
+    let pending = null, typing = null;
     if (thread) {
-      waiting = document.createElement("div");
-      waiting.className = "exchange thinking";
-      waiting.innerHTML = '<div class="reply"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>'
-        + '<span class="sr-only">Réponse en cours…</span></div>';
-      thread.append(waiting);
-      waiting.scrollIntoView({block: "end"});
+      pending = document.createElement("div");
+      pending.className = "exchange pending";
+      const said = document.createElement("p");
+      said.className = "said arrive";
+      said.textContent = text;
+      typing = document.createElement("div");
+      typing.className = "reply typing arrive";
+      typing.innerHTML = '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+        + '<span class="sr-only">Réponse en cours…</span>';
+      pending.append(said, typing);
+      thread.append(pending);
+      pending.scrollIntoView({block: "end"});
+      chime(SEND);
     }
     const html = await post("/say", {text});
-    waiting?.remove();
-    if (html === null) return;
-    if (thread) { thread.insertAdjacentHTML("beforeend", html); thread.lastElementChild?.scrollIntoView({block: "end"}); }
-    else { show(html); refresh(true); }
+    if (html === null) {                          // échec : le message n'est pas parti, on le rend à la saisie
+      pending?.remove();
+      const box = document.getElementById("say");
+      if (pending && box && !box.value) box.value = text;
+      return;
+    }
+    if (thread) {
+      const tpl = document.createElement("template");
+      tpl.innerHTML = html;
+      for (const r of tpl.content.querySelectorAll(".reply")) r.classList.add("arrive");
+      const nodes = [...tpl.content.children];
+      if (nodes.length) { pending.replaceWith(...nodes); nodes.at(-1).scrollIntoView({block: "end"}); chime(RECEIVE); }
+      else typing.remove();                       // réponse vide : le message reste, sans les points
+    } else { show(html); refresh(true); }
   }
 
   document.addEventListener("click", async (ev) => {
+    unlockAudio();
     const link = ev.target.closest("a[href]");
     if (link && !ev.defaultPrevented && ev.button === 0 && !(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey)
         && (!link.target || link.target === "_self") && !link.hasAttribute("download")
@@ -250,7 +311,10 @@
         const tpl = document.createElement("template");
         tpl.innerHTML = html;
         const fresh = tpl.content.querySelectorAll(".reply");
-        if (fresh.length) { reply.replaceWith(...fresh); return; }
+        if (fresh.length) {
+          for (const r of fresh) r.classList.add("arrive");
+          reply.replaceWith(...fresh); chime(RECEIVE); return;
+        }
       }
       show(html, false, inToast ? KEEP : cb);
       await refresh(true);                      // DOM remplacé : le focus se rétablit seulement maintenant
@@ -279,6 +343,7 @@
       const text = input.value.trim();
       if (!text) return;
       input.value = "";
+      unlockAudio();
       say(text, form.dataset.target || null);
     } else if (!form.matches("[data-post]") && !ev.defaultPrevented) {
       busy(true);                              // formulaire classique (recherche, connexion) : la page va changer

@@ -2,6 +2,7 @@
 {% block title %}Discussion · Second Brain{% endblock %}
 {% block main %}
 <h1>Discussion</h1>
+<div class="thread-tools"><button type="button" class="sound-toggle" data-sound aria-pressed="true" aria-label="Son des messages : activé" title="Son des messages">🔔</button></div>
 <div id="thread" class="thread" aria-live="polite">{% for ex in exchanges %}{% include "_exchange.html" %}{% endfor %}</div>
 <div class="shortcuts" aria-label="Commandes">{% for name, desc in commands %}<button type="button" data-say="/{{ name }}" title="{{ desc }}">/{{ name }}</button>{% endfor %}</div>
 <form class="composer" data-say-form data-target="#thread">
