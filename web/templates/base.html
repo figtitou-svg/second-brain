@@ -46,6 +46,7 @@
 {% endif %}
 <main id="main">{% block main %}{% endblock %}</main>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="loading" class="loading" role="progressbar" aria-label="Chargement en cours" hidden></div>
 <div id="offline" class="offline" role="alert" hidden>La page ne joint plus le serveur. Les infos affichées peuvent dater.</div>
 {% if csrf %}
 <nav class="bottom" aria-label="Raccourcis">

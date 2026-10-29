@@ -4,8 +4,34 @@
   const toast = document.getElementById("toast");
   const offline = document.getElementById("offline");
 
+  // Chargement : une barre en haut de page tant qu'une requête ou un changement de page est en cours. Elle
+  // n'apparaît qu'après 200 ms (pas de clignotement sur une réponse rapide) ; le rafraîchissement automatique
+  // de fond ne l'allume pas, seulement ce que l'utilisateur a déclenché.
+  const loading = document.getElementById("loading");
+  let pending = 0, loadingTimer = 0;
+  function busy(on) {
+    pending = Math.max(0, pending + (on ? 1 : -1));
+    if (!loading) return;
+    if (pending === 0) { clearTimeout(loadingTimer); loadingTimer = 0; loading.hidden = true; }
+    else if (!loadingTimer && loading.hidden) {
+      loadingTimer = setTimeout(() => { loadingTimer = 0; if (pending > 0) loading.hidden = false; }, 200);
+    }
+  }
+  // bouton en attente de réponse : désactivé, avec une roue (aria-busy) ; le retour arrière du navigateur
+  // peut rendre une page figée en cours de chargement : on repart de zéro
+  function lock(el, on) {
+    el.disabled = on;
+    if (on) el.setAttribute("aria-busy", "true"); else el.removeAttribute("aria-busy");
+  }
+  window.addEventListener("pageshow", (ev) => {
+    if (!ev.persisted) return;
+    pending = 0; busy(true); busy(false);
+    for (const b of document.querySelectorAll("[aria-busy=true]")) lock(b, false);
+  });
+
   async function post(url, fields) {
     const body = new URLSearchParams(fields);
+    busy(true);
     try {
       const r = await fetch(url, {method: "POST", body, headers: {"X-CSRF": csrf}, credentials: "same-origin"});
       offline.hidden = true;
@@ -13,6 +39,7 @@
       if (!r.ok) { show("Action refusée : recharge la page.", true); return null; }
       return await r.text();
     } catch (e) { offline.hidden = false; return null; }
+    finally { busy(false); }
   }
 
   // html vient du serveur (gabarits échappés, HTML Telegram filtré) ; text=true pour un message local.
@@ -142,11 +169,12 @@
   // appel forcé ajoute un passage ; la promesse n'est tenue qu'une fois tous les passages finis (DOM à jour)
   function refresh(force) {
     if (refresh.running) { if (force) refresh.again = true; return refresh.running; }
+    if (force) busy(true);
     refresh.running = (async () => {
       try {
         await refreshOnce(force);
         while (refresh.again) { refresh.again = false; await refreshOnce(true); }
-      } finally { refresh.running = null; refresh.again = false; }
+      } finally { refresh.running = null; refresh.again = false; if (force) busy(false); }
     })();
     return refresh.running;
   }
@@ -170,14 +198,29 @@
   }
 
   async function say(text, target) {
-    const html = await post("/say", {text});
-    if (html === null) return;
     const thread = target && document.querySelector(target);
+    // dans la Discussion : trois points à la place de la réponse, le temps que le bot réfléchisse
+    let waiting = null;
+    if (thread) {
+      waiting = document.createElement("div");
+      waiting.className = "exchange thinking";
+      waiting.innerHTML = '<div class="reply"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+        + '<span class="sr-only">Réponse en cours…</span></div>';
+      thread.append(waiting);
+      waiting.scrollIntoView({block: "end"});
+    }
+    const html = await post("/say", {text});
+    waiting?.remove();
+    if (html === null) return;
     if (thread) { thread.insertAdjacentHTML("beforeend", html); thread.lastElementChild?.scrollIntoView({block: "end"}); }
     else { show(html); refresh(true); }
   }
 
   document.addEventListener("click", async (ev) => {
+    const link = ev.target.closest("a[href]");
+    if (link && !ev.defaultPrevented && ev.button === 0 && !(ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey)
+        && (!link.target || link.target === "_self") && !link.hasAttribute("download")
+        && internal(link.getAttribute("href"))) busy(true);      // la page change : la barre reste jusqu'à l'arrivée
     if (ev.target.closest("#toast > .x")) { hideToast(true); return; }
     const cb = ev.target.closest("[data-cb]");
     const sy = ev.target.closest("[data-say]");
@@ -189,17 +232,17 @@
       const hadFocus = document.activeElement === cb || inToast;
       const anchor = inToast ? show.anchor : describeAnchor(cb);
       const original = inToast ? show.origin : cb;
-      cb.disabled = true;
+      lock(cb, true);
       if (cb.dataset.discuss === "1") {
         // suite de conversation : la réponse est rangée dans la Discussion, on y va
         const label = (cb.dataset.label || cb.textContent || "").trim();
         const html = await post("/click", {data: cb.dataset.cb, discuss: "1", label});
-        if (html === null || !html.trim() || failed(html)) { cb.disabled = false; show(html, false, cb); return; }
+        if (html === null || !html.trim() || failed(html)) { lock(cb, false); show(html, false, cb); return; }
         location.href = "/discussion";     // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
       const html = await post("/click", {data: cb.dataset.cb});
-      cb.disabled = false;
+      lock(cb, false);
       if (html === null) return;
       // dans un fil : la réponse remplace le message qui portait le bouton (comme Telegram l'édite)
       const reply = cb.closest(".exchange .reply");
@@ -218,9 +261,9 @@
       if (internal(goto) && !document.querySelector("#thread")) {
         // « Nouveau projet » : la commande part, la conversation continue dans la Discussion
         if (sy.disabled) return;
-        sy.disabled = true;
+        lock(sy, true);
         const html = await post("/say", {text: sy.dataset.say});
-        if (html === null || !html.trim() || failed(html)) { sy.disabled = false; show(html, false, sy); return; }
+        if (html === null || !html.trim() || failed(html)) { lock(sy, false); show(html, false, sy); return; }
         location.href = goto;              // le bouton reste désactivé : pas de second envoi avant le départ
         return;
       }
@@ -237,6 +280,8 @@
       if (!text) return;
       input.value = "";
       say(text, form.dataset.target || null);
+    } else if (!form.matches("[data-post]") && !ev.defaultPrevented) {
+      busy(true);                              // formulaire classique (recherche, connexion) : la page va changer
     } else if (form.matches("[data-post]")) {
       ev.preventDefault();
       await post(form.action, {});
