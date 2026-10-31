@@ -6,6 +6,15 @@
 <meta name="csrf" content="{{ csrf }}">
 <meta name="color-scheme" content="dark light">
 <title>{% block title %}Second Brain{% endblock %}</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#141B2D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F4F6FB" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Second Brain">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
