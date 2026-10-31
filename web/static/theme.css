@@ -1,5 +1,7 @@
 /* web/static/theme.css — couche d'habillage : dégradés, verre, ambiance par projet. Chargée après app.css ;
-   la retirer rend le site tel qu'avant. Chaque effet a un repli (navigateur sans color-mix / backdrop-filter). */
+   la retirer rend le site tel qu'avant. Chaque effet a un repli (navigateur sans color-mix / backdrop-filter) :
+   tout color-mix vit dans un @supports qui le teste (sinon, avec var(), la déclaration deviendrait « unset » au
+   calcul et effacerait le repli au lieu d'être ignorée). */
 :root{
   --c:var(--accent);
   --accent-2:#A78BFA;
@@ -42,15 +44,18 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
 /* accents en dégradé */
 .thread .said,.composer button[type="submit"],.nav .badge{background:var(--grad);color:var(--on-grad)}
 .composer button[type="submit"]{border-color:transparent}
-.item.current{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 28%,transparent),
-  color-mix(in srgb,var(--accent-2) 22%,transparent));box-shadow:inset 0 0 0 1px var(--glass-line)}
+.item.current{box-shadow:inset 0 0 0 1px var(--glass-line)}
 .loading::before{background:var(--grad)}
 /* barre de saisie collante (toujours en bas de l'écran) : couleur du bas du dégradé plutôt que --bg qui tranche ;
    opaque, pour que les messages qui défilent dessous ne se mêlent pas au champ */
 .composer{background:var(--bg-to)}
-.thread .reply .actions button{background:var(--bg);background:color-mix(in srgb,var(--bg) 70%,transparent)}
-@media (prefers-color-scheme: dark){
-  .gauge i,.bars .fill,.gbar i{background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 55%,#fff))}}
+.thread .reply .actions button{background:var(--bg)}
+@supports (color: color-mix(in srgb, red 50%, blue)){
+  .item.current{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 28%,transparent),
+    color-mix(in srgb,var(--accent-2) 22%,transparent))}
+  .thread .reply .actions button{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+  @media (prefers-color-scheme: dark){
+    .gauge i,.bars .fill,.gbar i{background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 55%,#fff))}}}
 
 /* détails */
 button,.item,a.item{transition:background-color .15s,box-shadow .15s,transform .15s}
@@ -58,7 +63,7 @@ button:not(:disabled):hover{box-shadow:0 0 0 1px var(--glass-line),0 4px 14px rg
 @media (prefers-reduced-motion:reduce){button,.item,a.item{transition:none}}
 
 /* ambiance par projet : la couleur du projet (--c) teinte le verre ; --c vaut --accent par défaut.
-   Repli sans color-mix : la déclaration est ignorée, le verre ci-dessus reste.
+   Repli sans color-mix : les règles teintées sont dans un @supports, le verre ci-dessus reste seul.
    Dosage par thème : en sombre, les couleurs claires (jaune) éclaircissent le fond et rapprochent le texte
    atténué / d'alerte ; --tint et --halo sont calculés par tests/web/test_theme.py (pire cas empilé ≥ 3:1). */
 :root{--tint:14%;--halo:20%}
@@ -73,11 +78,14 @@ button:not(:disabled):hover{box-shadow:0 0 0 1px var(--glass-line),0 4px 14px rg
    15 % de blanc suffit pour 4,5:1 sur toute la palette, la couleur reste reconnaissable. .tgroup .gname, sur le fond
    de page non teinté, garde sa couleur pure (≥ 6:1). */
 @media (prefers-color-scheme: dark){
-  .title,.rowcard.top .rk,.pc-name,.sgroup .gname,.step.current .stitle{
-    color:var(--c);color:color-mix(in srgb,var(--c) 85%,#fff)}}
-.now,.rowcard,.pcard,.phead,.focus li,.sgroup{
-  background:linear-gradient(135deg,color-mix(in srgb,var(--c) var(--tint),transparent),transparent 62%),var(--glass)}
+  .title,.rowcard.top .rk,.pc-name,.sgroup .gname,.step.current .stitle{color:var(--c)}}
 .pdetail{position:relative;isolation:isolate}
-/* halo en haut de la page projet, fondu sur tous les bords (aucune arête visible sous le titre) */
-.pdetail::before{content:"";position:absolute;inset:-14px -16px auto -16px;height:240px;z-index:-1;pointer-events:none;
-  background:radial-gradient(75% 50% at 20% 50%,color-mix(in srgb,var(--c) var(--halo),transparent),transparent)}
+@supports (color: color-mix(in srgb, red 50%, blue)){
+  @media (prefers-color-scheme: dark){
+    .title,.rowcard.top .rk,.pc-name,.sgroup .gname,.step.current .stitle{
+      color:color-mix(in srgb,var(--c) 85%,#fff)}}
+  .now,.rowcard,.pcard,.phead,.focus li,.sgroup{
+    background:linear-gradient(135deg,color-mix(in srgb,var(--c) var(--tint),transparent),transparent 62%),var(--glass)}
+  /* halo en haut de la page projet, fondu sur tous les bords (aucune arête visible sous le titre) */
+  .pdetail::before{content:"";position:absolute;inset:-14px -16px auto -16px;height:240px;z-index:-1;pointer-events:none;
+    background:radial-gradient(75% 50% at 20% 50%,color-mix(in srgb,var(--c) var(--halo),transparent),transparent)}}

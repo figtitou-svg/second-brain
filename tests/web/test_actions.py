@@ -16,7 +16,31 @@ def test_safe_html_keeps_telegram_tags_and_escapes_others():
     assert out == '<b>Gras</b> <i>it</i> <code>x</code><br><a href="https://ex.org">lien</a>'
     assert actions.safe_html("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;"
     assert "&lt;a href=&quot;javascript" in actions.safe_html('<a href="javascript:alert(1)">x</a>')
-    assert actions.safe_html('<b onclick="x()">t</b>') == '&lt;b onclick=&quot;x()&quot;&gt;t</b>'
+    # la balise ouvrante refusée est échappée : sa fermante, orpheline, disparaît
+    assert actions.safe_html('<b onclick="x()">t</b>') == '&lt;b onclick=&quot;x()&quot;&gt;t'
+
+
+def test_safe_html_closes_unclosed_tags_at_the_end():
+    # une bulle ne doit jamais laisser du gras (ou un lien) déborder sur les suivantes au rechargement
+    assert actions.safe_html("<b>Gras sans fin") == "<b>Gras sans fin</b>"
+    assert actions.safe_html("<b><i>deux") == "<b><i>deux</i></b>"
+    assert actions.safe_html('<a href="https://ex.org">lien') == '<a href="https://ex.org">lien</a>'
+
+
+def test_safe_html_drops_stray_closing_tags():
+    assert actions.safe_html("texte</i> suite") == "texte suite"
+    assert actions.safe_html("</a>x") == "x"
+    assert actions.safe_html("<b>a</b></b>") == "<b>a</b>"
+
+
+def test_safe_html_nesting_is_closed_in_order():
+    assert actions.safe_html("<b>a<i>b</b>c") == "<b>a<i>b</i></b>c"
+    assert actions.safe_html("<pre><code>x</code></pre>") == "<pre><code>x</code></pre>"
+
+
+def test_safe_html_balanced_input_is_unchanged():
+    text = '<b>G</b> <i>i</i> <u>u</u> <s>s</s> <blockquote>q</blockquote> <a href="http://ex.org">l</a>'
+    assert actions.safe_html(text) == text
 
 
 def test_commands_map_to_the_same_methods_as_telegram(monkeypatch):

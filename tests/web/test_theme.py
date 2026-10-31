@@ -113,8 +113,9 @@ def test_text_stays_readable_on_every_project_tint():
 
 def test_project_coloured_titles_stay_readable_on_their_own_tint_in_dark():
     flat = CSS.replace(" ", "").replace("\n", "")
-    m = re.search(r"\.title,\.rowcard\.top\.rk,\.pc-name,\.sgroup\.gname,\.step\.current\.stitle\{"
-                  r"color:var\(--c\);color:color-mix\(insrgb,var\(--c\)(\d+)%,#fff\)\}", flat)
+    sel = r"\.title,\.rowcard\.top\.rk,\.pc-name,\.sgroup\.gname,\.step\.current\.stitle\{"
+    assert re.search(sel + r"color:var\(--c\)\}", flat), "repli sans color-mix absent"
+    m = re.search(sel + r"color:color-mix\(insrgb,var\(--c\)(\d+)%,#fff\)\}", flat)
     assert m, "règle de titres en couleur de projet (sombre) absente"
     share = int(m.group(1)) / 100
     s = SURFACE["dark"]
@@ -139,3 +140,28 @@ def test_project_ambience_rules_exist():
     assert "transparent62%),var(--glass)}" in flat
     rules = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S).replace(" ", "")
     assert "border:" not in rules
+
+
+def test_every_color_mix_is_guarded_by_supports():
+    """Sans color-mix, une déclaration qui contient var() n'est pas écartée à l'analyse : elle devient « unset » au
+    calcul et écrase le repli posé avant. Chaque color-mix doit donc vivre dans un bloc @supports qui le teste."""
+    text = re.sub(r"/\*.*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), CSS, flags=re.S)   # lignes gardées
+    stack: list[bool] = []          # une entrée par accolade ouverte : ce bloc est-il @supports (color: color-mix…) ?
+    prelude, bad = "", []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        for i, ch in enumerate(line):
+            if line.startswith("color-mix", i) and not any(stack) and not prelude.lstrip().startswith("@supports"):
+                bad.append(lineno)
+            if ch == "{":
+                stack.append(re.sub(r"\s", "", prelude).startswith("@supports(color:color-mix("))
+                prelude = ""
+            elif ch in "};":
+                if ch == "}" and stack:
+                    stack.pop()
+                prelude = ""
+            else:
+                prelude += ch
+        prelude += " "
+    assert not stack, "accolades déséquilibrées dans theme.css"
+    assert "color-mix" in text
+    assert not bad, f"color-mix hors @supports (color: color-mix…) aux lignes {sorted(set(bad))}"

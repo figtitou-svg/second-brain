@@ -20,14 +20,29 @@ _TAG = re.compile(r"<[^>]*>")
 
 
 def safe_html(text: str) -> str:
-    """HTML de Telegram (déjà échappé par le bot) : seules ses balises passent, le reste est échappé."""
-    out, pos = [], 0
+    """HTML de Telegram (déjà échappé par le bot) : seules ses balises passent, le reste est échappé.
+    Équilibré : une fermante orpheline disparaît, les balises restées ouvertes sont refermées à la fin (sinon le
+    gras d'une bulle déborderait sur les suivantes)."""
+    out, pos, opened = [], 0, []
     for m in _TAG.finditer(text):
         out.append(text[pos:m.start()].replace("<", "&lt;").replace(">", "&gt;"))
         tag = m.group(0)
-        out.append(tag if _ALLOWED.match(tag) else html.escape(tag, quote=True))
         pos = m.end()
+        if not _ALLOWED.match(tag):
+            out.append(html.escape(tag, quote=True))
+            continue
+        name = re.match(r"</?(\w+)", tag).group(1)
+        if not tag.startswith("</"):
+            opened.append(name)
+            out.append(tag)
+        elif name in opened:
+            while opened:                          # referme aussi ce qui a été ouvert dedans
+                inner = opened.pop()
+                out.append(f"</{inner}>")
+                if inner == name:
+                    break
     out.append(text[pos:].replace("<", "&lt;").replace(">", "&gt;"))
+    out.extend(f"</{name}>" for name in reversed(opened))
     return "".join(out).replace("\n", "<br>")
 
 
