@@ -63,6 +63,12 @@ button:not(:disabled):hover{box-shadow:0 0 0 1px var(--glass-line),0 4px 14px rg
    atténué / d'alerte ; --tint et --halo sont calculés par tests/web/test_theme.py (pire cas empilé ≥ 3:1). */
 :root{--tint:14%;--halo:20%}
 @media (prefers-color-scheme: light){:root{--tint:20%;--halo:28%}}
+/* texte atténué et texte d'alerte réajustés pour garder 4,5:1 au coin le plus teinté (palette, accent, alerte,
+   cours, hors projet). --alert reste inchangé pour les pastilles, bordures et fonds ; seul le texte change. */
+:root{--muted:#AEB8D2;--alert-text:#FF9BAB}
+@media (prefers-color-scheme: light){:root{--muted:#4C5674;--alert-text:#A81C31}}
+.alert-text,.error,.components .ko span:first-child,.duelist.late .when,.duelist.late li,.overdue .due,.nr{
+  color:var(--alert-text)}
 .now,.rowcard,.pcard,.phead,.focus li,.sgroup{
   background:linear-gradient(135deg,color-mix(in srgb,var(--c) var(--tint),transparent),transparent 62%),var(--glass)}
 .pdetail{position:relative;isolation:isolate}

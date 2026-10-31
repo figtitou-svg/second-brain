@@ -55,7 +55,7 @@ def test_theme_is_loaded_after_app_css():
 # --- ambiance par projet (tâche 7) ---
 import re  # noqa: E402
 
-from web.data import PALETTE  # noqa: E402
+from web.data import COURSE, NO_PROJECT, PALETTE  # noqa: E402
 
 
 def mix(fg: str, bg: str, alpha: float) -> str:
@@ -71,26 +71,33 @@ def _dosage() -> dict[str, tuple[float, float]]:
     return {theme: (int(t) / 100, int(h) / 100) for theme, (t, h) in zip(("dark", "light"), pairs)}
 
 
-# valeurs miroir des thèmes : carte opaque, verre (couleur, opacité), bas/haut du dégradé de fond, texte, atténué, alerte
+# valeurs miroir des thèmes : carte opaque, verre (couleur, opacité), bas/haut du dégradé de fond, texte,
+# atténué (--muted de theme.css), texte d'alerte (--alert-text de theme.css), et les --c possibles hors palette
+# (accent par défaut, --alert des notifications non remises)
 SURFACE = {
     "dark": {"card": "#1E2740", "glass": ("#1E2740", .64), "bgs": ("#0E1426", "#1B1545"),
-             "text": "#ECEEF6", "muted": "#8F99B5", "alert": "#FF5470"},
+             "text": "#ECEEF6", "muted": "#AEB8D2", "alert": "#FF9BAB", "extra_c": ("#5CB8FF", "#FF5470")},
     "light": {"card": "#FFFFFF", "glass": ("#FFFFFF", .72), "bgs": ("#F5F8FE", "#EDEAFC"),
-              "text": "#1A2238", "muted": "#5A6482", "alert": "#D3263F"},
+              "text": "#1A2238", "muted": "#4C5674", "alert": "#A81C31", "extra_c": ("#2563C9", "#D3263F")},
 }
 
 
 def test_surface_mirror_values_are_in_the_stylesheets():
     for s in SURFACE.values():
-        for value in (s["card"], s["text"], s["muted"], s["alert"], *s["bgs"]):
+        for value in (s["card"], s["text"], s["muted"], s["alert"], *s["bgs"], *s["extra_c"]):
             assert value.lower() in BOTH.lower(), value
+    flat = CSS.replace(" ", "")
+    assert ":root{--muted:#AEB8D2;--alert-text:#FF9BAB}" in flat
+    assert ":root{--muted:#4C5674;--alert-text:#A81C31}" in flat
+    # le texte d'alerte passe par --alert-text (bordures, pastilles et fonds gardent --alert)
+    assert ".alert-text,.error," in flat and "color:var(--alert-text)" in flat
 
 
 def test_text_stays_readable_on_every_project_tint():
-    colors = list(PALETTE)
-    assert len(colors) >= 8
+    assert len(PALETTE) >= 8
     dosage = _dosage()
     for theme, s in SURFACE.items():
+        colors = [*PALETTE, COURSE, NO_PROJECT, *s["extra_c"]]
         tint, halo = dosage[theme]
         surfaces = [s["card"]]                       # carte opaque (repli) sous la teinte
         for bg in s["bgs"]:                          # pire cas empilé (page projet) : fond + halo + verre + teinte
@@ -99,10 +106,9 @@ def test_text_stays_readable_on_every_project_tint():
             under = surfaces + [mix(s["glass"][0], mix(color, bg, halo), s["glass"][1]) for bg in s["bgs"]]
             for surface in under:
                 tinted = mix(color, surface, tint)
-                assert contrast(s["text"], tinted) >= 4.5, (theme, color, "text")
-                # texte secondaire et lignes d'alerte (doublées d'un ● ou d'un drapeau) : seuil 3:1
-                assert contrast(s["muted"], tinted) >= 3.0, (theme, color, "muted")
-                assert contrast(s["alert"], tinted) >= 3.0, (theme, color, "alert")
+                # texte courant, atténué et d'alerte : petits corps (13-16 px) → 4,5:1 partout
+                for role in ("text", "muted", "alert"):
+                    assert contrast(s[role], tinted) >= 4.5, (theme, color, role)
 
 
 def test_project_ambience_rules_exist():
