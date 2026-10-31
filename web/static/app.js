@@ -29,9 +29,11 @@
     for (const b of document.querySelectorAll("[aria-busy=true]")) lock(b, false);
   });
 
+  let ownAt = 0;                                // dernière action de cette page : son propre « changed » est ignoré
   async function post(url, fields) {
     const body = new URLSearchParams(fields);
     busy(true);
+    ownAt = Date.now();
     try {
       const r = await fetch(url, {method: "POST", body, headers: {"X-CSRF": csrf}, credentials: "same-origin"});
       offline.hidden = true;
@@ -48,7 +50,9 @@
   // revient à l'élément qui l'avait ouvert (ou à son remplaçant). origin : l'élément déclencheur, KEEP pour
   // garder celui déjà retenu (choix fait dans le bandeau), absent : l'élément qui a le focus.
   const KEEP = {};
-  function show(content, text, origin) {
+  // quiet (bandeau « direct ») : ne prend jamais le focus ; l'élément qui l'a est seulement retenu, pour que ✕
+  // y ramène plutôt qu'à un déclencheur plus ancien.
+  function show(content, text, origin, quiet) {
     if (!content || !content.trim()) return;   // réponse vide : le bandeau n'est pas touché
     const inToast = !toast.hidden && toast.contains(document.activeElement);
     if (origin !== KEEP && !(origin === undefined && inToast)) rememberOrigin(origin || document.activeElement);
@@ -62,7 +66,7 @@
     toast.hidden = false;
     clearTimeout(show.t);
     const first = toast.querySelector("[data-cb]");
-    if (first) { first.focus(); return; }
+    if (first) { if (!quiet) first.focus(); return; }     // bandeau « direct » : jamais de vol de focus (saisie en cours)
     show.t = setTimeout(() => hideToast(false), 6000);
   }
 
@@ -398,4 +402,45 @@
   // rechargement des sections toutes les 60 s, seulement si la page est visible
   setInterval(() => { if (document.visibilityState === "visible") refresh(); }, 60000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
+
+  // Direct : le serveur prévient dès que le bot écrit (« bot ») ou qu'une action change les données (« changed »).
+  // Le flux ne porte qu'un numéro : le message lui-même est demandé au serveur (même rendu filtré que partout).
+  const seen = (id) => document.querySelector(`[data-ref="${id}"]`) !== null;
+  async function onBot(id) {
+    if (!Number.isInteger(id) || seen(id)) return;
+    let html;
+    try {
+      const r = await fetch(`/fragment/message/${id}`, {credentials: "same-origin"});
+      if (!r.ok) return;                                  // inconnu (bot redémarré) : on n'affiche rien
+      html = await r.text();
+    } catch (e) { return; }
+    if (seen(id)) return;                                 // arrivé entre-temps par un rechargement : pas de doublon
+    const thread = document.querySelector("#thread");
+    if (thread) {
+      const tpl = document.createElement("template");
+      tpl.innerHTML = html;
+      for (const r of tpl.content.querySelectorAll(".reply")) r.classList.add("arrive");
+      const nodes = [...tpl.content.children];
+      thread.append(...nodes);
+      nodes.at(-1)?.scrollIntoView({block: "end"});
+    } else if (toast.hidden || !toast.querySelector("[data-cb]")) {
+      show(html, false, undefined, true);                // ne remplace jamais un bandeau qui attend un choix
+    }
+    chime(RECEIVE);
+    refresh();
+  }
+
+  // un seul flux par page ; EventSource se reconnecte seul (le serveur suggère retry: 5000), sans boucle ici
+  function live() {
+    if (!csrf || !window.EventSource) return;
+    const es = new EventSource("/events");
+    let down = false;
+    es.addEventListener("open", () => { if (down) { down = false; refresh(true); } });
+    es.addEventListener("error", () => { down = true; });
+    es.addEventListener("changed", () => { if (Date.now() - ownAt > 4000) refresh(); });
+    es.addEventListener("bot", (ev) => {
+      try { onBot(JSON.parse(ev.data).id); } catch (e) { /* événement mal formé : ignoré */ }
+    });
+  }
+  live();
 })();
