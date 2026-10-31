@@ -111,6 +111,22 @@ def test_text_stays_readable_on_every_project_tint():
                     assert contrast(s[role], tinted) >= 4.5, (theme, color, role)
 
 
+def test_project_coloured_titles_stay_readable_on_their_own_tint_in_dark():
+    flat = CSS.replace(" ", "").replace("\n", "")
+    m = re.search(r"\.title,\.rowcard\.top\.rk,\.pc-name,\.sgroup\.gname,\.step\.current\.stitle\{"
+                  r"color:var\(--c\);color:color-mix\(insrgb,var\(--c\)(\d+)%,#fff\)\}", flat)
+    assert m, "règle de titres en couleur de projet (sombre) absente"
+    share = int(m.group(1)) / 100
+    s = SURFACE["dark"]
+    tint, halo = _dosage()["dark"]
+    for color in PALETTE:
+        title = mix(color, "#FFFFFF", share)
+        under = [s["card"]] + [mix(s["glass"][0], bg, s["glass"][1]) for bg in s["bgs"]] + \
+            [mix(s["glass"][0], mix(color, bg, halo), s["glass"][1]) for bg in s["bgs"]]
+        for surface in under:
+            assert contrast(title, mix(color, surface, tint)) >= 4.5, (color, surface)
+
+
 def test_project_ambience_rules_exist():
     flat = CSS.replace(" ", "").replace("\n", "")
     assert "color-mix(insrgb,var(--c)var(--tint),transparent)" in flat
