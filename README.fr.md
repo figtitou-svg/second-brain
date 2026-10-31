@@ -93,6 +93,12 @@ Il tourne comme service systemd sur une petite VM Linux — voir [`deploy/second
 
 Python · python-telegram-bot · APScheduler · SQLite (FTS5) · Pydantic · LiteLLM (Groq, Gemini, Ollama) · API Google (Gmail, Agenda, Drive, Docs) · API Notion · pytest
 
+## Sauvegardes
+
+Copie nocturne à 03:10 de `data/coach.sqlite` et `data/memory.sqlite` dans `~/sauvegardes/` (14 conservées), via [`deploy/second-brain-backup.timer`](deploy/second-brain-backup.timer).  
+Tout échec est signalé sur Telegram.  
+Contrôle : `python deploy/backup.py --check`.
+
 ## Licence
 
 [MIT](LICENSE)

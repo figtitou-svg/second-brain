@@ -1,0 +1,12 @@
+# Sauvegarde nocturne des bases (lancée par second-brain-backup.timer). Adapter User et chemins, puis :
+#   sudo cp deploy/second-brain-backup.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now second-brain-backup.timer
+[Unit]
+Description=Sauvegarde des bases Second Brain
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/second-brain
+ExecStart=/home/ubuntu/second-brain/.venv/bin/python deploy/backup.py
+Nice=19
