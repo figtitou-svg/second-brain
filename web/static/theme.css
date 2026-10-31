@@ -56,3 +56,16 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
 button,.item,a.item{transition:background-color .15s,box-shadow .15s,transform .15s}
 button:not(:disabled):hover{box-shadow:0 0 0 1px var(--glass-line),0 4px 14px rgba(0,0,0,.18)}
 @media (prefers-reduced-motion:reduce){button,.item,a.item{transition:none}}
+
+/* ambiance par projet : la couleur du projet (--c) teinte le verre ; --c vaut --accent par défaut.
+   Repli sans color-mix : la déclaration est ignorée, le verre ci-dessus reste.
+   Dosage par thème : en sombre, les couleurs claires (jaune) éclaircissent le fond et rapprochent le texte
+   atténué / d'alerte ; --tint et --halo sont calculés par tests/web/test_theme.py (pire cas empilé ≥ 3:1). */
+:root{--tint:14%;--halo:20%}
+@media (prefers-color-scheme: light){:root{--tint:20%;--halo:28%}}
+.now,.rowcard,.pcard,.phead,.focus li,.sgroup{
+  background:linear-gradient(135deg,color-mix(in srgb,var(--c) var(--tint),transparent),transparent 62%),var(--glass)}
+.pdetail{position:relative;isolation:isolate}
+/* halo en haut de la page projet, fondu sur tous les bords (aucune arête visible sous le titre) */
+.pdetail::before{content:"";position:absolute;inset:-14px -16px auto -16px;height:240px;z-index:-1;pointer-events:none;
+  background:radial-gradient(75% 50% at 20% 50%,color-mix(in srgb,var(--c) var(--halo),transparent),transparent)}
