@@ -1,0 +1,58 @@
+/* web/static/theme.css — couche d'habillage : dégradés, verre, ambiance par projet. Chargée après app.css ;
+   la retirer rend le site tel qu'avant. Chaque effet a un repli (navigateur sans color-mix / backdrop-filter). */
+:root{
+  --c:var(--accent);
+  --accent-2:#A78BFA;
+  --bg-from:#0E1426;--bg-to:#1B1545;
+  /* halos discrets : le texte atténué posé directement sur le fond garde 4,5:1 même au centre d'un halo */
+  --halo-1:rgba(92,184,255,.12);--halo-2:rgba(167,139,250,.12);
+  --glass:rgba(30,39,64,.64);--glass-strong:rgba(22,29,50,.84);
+  --glass-line:rgba(255,255,255,.10);--glass-shadow:0 10px 30px rgba(4,7,18,.38);
+  --grad:linear-gradient(135deg,var(--accent),var(--accent-2));
+  --on-grad:#0B1020;
+}
+@media (prefers-color-scheme: light){:root{
+  --accent-2:#7C4DDB;--bg-from:#F5F8FE;--bg-to:#EDEAFC;
+  --halo-1:rgba(37,99,201,.06);--halo-2:rgba(124,77,219,.06);
+  --glass:rgba(255,255,255,.72);--glass-strong:rgba(255,255,255,.90);
+  --glass-line:rgba(26,34,56,.09);--glass-shadow:0 10px 28px rgba(40,50,100,.13);--on-grad:#FFFFFF}}
+
+/* fond */
+body{background:var(--bg-from);background:linear-gradient(160deg,var(--bg-from),var(--bg-to)) fixed}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(60vmax 45vmax at 8% -8%,var(--halo-1),transparent 62%),
+             radial-gradient(55vmax 45vmax at 105% 18%,var(--halo-2),transparent 62%)}
+
+/* cartes en verre : fond translucide + anneau intérieur (jamais de border : les bandeaux de projet restent) */
+.card,.now,.rowcard,.pcard,.phead,.sgroup,.focus li,.counters>div,.wday,.empty-state,.empty-day,.agenda-list li,
+.toast,.step.current .sbody,.thread .reply{
+  background:var(--glass);box-shadow:inset 0 0 0 1px var(--glass-line),var(--glass-shadow)}
+/* ce qui flotte au-dessus du contenu (menus, bulle) reste opaque sans flou : sinon le texte défilant transparaît */
+.nav,.bottom{background:var(--nav);box-shadow:inset 0 0 0 1px var(--glass-line)}
+.toast{background:var(--card)}
+@supports ((-webkit-backdrop-filter:none) or (backdrop-filter:none)){
+  .card,.now,.phead,.toast,.nav,.bottom,.focus li{
+    -webkit-backdrop-filter:blur(14px) saturate(1.25);backdrop-filter:blur(14px) saturate(1.25)}
+  .nav,.bottom{background:var(--glass-strong)}
+  .toast{background:var(--glass)}}
+@media (prefers-reduced-transparency:reduce){
+  :root{--glass:var(--card);--glass-strong:var(--nav)}
+  .card,.now,.phead,.toast,.nav,.bottom,.focus li{-webkit-backdrop-filter:none;backdrop-filter:none}}
+
+/* accents en dégradé */
+.thread .said,.composer button[type="submit"],.nav .badge{background:var(--grad);color:var(--on-grad)}
+.composer button[type="submit"]{border-color:transparent}
+.item.current{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 28%,transparent),
+  color-mix(in srgb,var(--accent-2) 22%,transparent));box-shadow:inset 0 0 0 1px var(--glass-line)}
+.loading::before{background:var(--grad)}
+/* barre de saisie collante (toujours en bas de l'écran) : couleur du bas du dégradé plutôt que --bg qui tranche ;
+   opaque, pour que les messages qui défilent dessous ne se mêlent pas au champ */
+.composer{background:var(--bg-to)}
+.thread .reply .actions button{background:var(--bg);background:color-mix(in srgb,var(--bg) 70%,transparent)}
+@media (prefers-color-scheme: dark){
+  .gauge i,.bars .fill,.gbar i{background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 55%,#fff))}}
+
+/* détails */
+button,.item,a.item{transition:background-color .15s,box-shadow .15s,transform .15s}
+button:not(:disabled):hover{box-shadow:0 0 0 1px var(--glass-line),0 4px 14px rgba(0,0,0,.18)}
+@media (prefers-reduced-motion:reduce){button,.item,a.item{transition:none}}
