@@ -407,6 +407,37 @@
   // Direct : le serveur prévient dès que le bot écrit (« bot ») ou qu'une action change les données (« changed »).
   // Le flux ne porte qu'un numéro : le message lui-même est demandé au serveur (même rendu filtré que partout).
   const seen = (id) => document.querySelector(`[data-ref="${id}"]`) !== null;
+  // à appeler AVANT l'ajout : on ne descend que si l'on était déjà en bas du fil, ou si ton message est encore
+  // en attente de réponse (bulle .pending, la dernière) ; un lecteur remonté dans le fil n'est pas ramené de force,
+  // même quand le dernier échange est l'un des tiens (déjà répondu)
+  function following(thread) {
+    return thread.getBoundingClientRect().bottom - window.innerHeight < 120         // bas du fil visible
+      || thread.lastElementChild?.classList.contains("pending") === true;
+  }
+  // Rattrapage : un onglet caché n'a pas de flux, les messages du bot publiés pendant ce temps manquent au fil.
+  // Au retour (ou après une vraie coupure) on relit le fil et on ajoute, dans l'ordre, ceux qui n'y sont pas ;
+  // tes propres échanges (sans data-ref) ne sont jamais réinsérés. Un seul rattrapage à la fois ; aucune erreur
+  // affichée ; ni le focus ni la saisie en cours ne sont touchés.
+  let catching = false;
+  async function catchUp() {
+    const thread = document.querySelector("#thread");
+    if (!thread || catching) return;
+    catching = true;
+    try {
+      const r = await fetch("/fragment/discussion", {credentials: "same-origin"});
+      if (!r.ok || r.redirected) return;
+      const tpl = document.createElement("template");
+      tpl.innerHTML = await r.text();
+      const missed = [...tpl.content.querySelectorAll(".exchange[data-ref]")].filter((ex) => !seen(ex.dataset.ref));
+      if (!missed.length) return;
+      for (const ex of missed) for (const rp of ex.querySelectorAll(".reply")) rp.classList.add("arrive");
+      const follow = following(thread);
+      thread.append(...missed);
+      if (follow) missed.at(-1).scrollIntoView({block: "end"});
+      chime(RECEIVE);
+    } catch (e) { /* rattrapage manqué : le prochain retour ou rechargement s'en chargera */ }
+    finally { catching = false; }
+  }
   async function onBot(id) {
     if (!Number.isInteger(id) || seen(id)) return;
     let html;
@@ -422,12 +453,9 @@
       tpl.innerHTML = html;
       for (const r of tpl.content.querySelectorAll(".reply")) r.classList.add("arrive");
       const nodes = [...tpl.content.children];
-      // on ne descend que si l'on était déjà en bas (ou si ton propre message est le dernier) : un lecteur
-      // remonté dans le fil n'est pas ramené de force
-      const atBottom = thread.getBoundingClientRect().bottom - window.innerHeight < 120;   // bas du fil visible
-      const mineLast = thread.lastElementChild?.querySelector(".said") != null;
+      const follow = following(thread);
       thread.append(...nodes);
-      if (atBottom || mineLast) nodes.at(-1)?.scrollIntoView({block: "end"});
+      if (follow) nodes.at(-1)?.scrollIntoView({block: "end"});
     } else if (toast.hidden || !toast.querySelector("[data-cb]")) {
       show(html, false, undefined, true);                // ne remplace jamais un bandeau qui attend un choix
     }
@@ -455,12 +483,13 @@
   // après une vraie coupure : tout est rechargé, le focus reste où il était (ou sur son remplaçant)
   async function recover() {
     const el = document.activeElement, anchor = describeAnchor(el);
+    catchUp();                                 // messages du bot publiés pendant la coupure
     await refresh(true);
     if (el && el !== document.body && focusLost()) focusAnchor(anchor, el);
   }
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { es?.close(); es = null; }
-    else live();
+    else if (!es) { live(); catchUp(); }      // flux rouvert d'abord : rien ne tombe entre la relecture et lui
   });
   if (document.visibilityState !== "hidden") live();
 })();
