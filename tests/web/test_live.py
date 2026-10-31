@@ -111,7 +111,7 @@ def test_bot_message_lands_in_the_discussion_and_the_fragment_is_escaped():
     asyncio.run(go())
 
 
-def test_click_and_say_publish_changed_but_a_failed_say_does_not():
+def test_successful_click_and_say_publish_changed():
     bus = live.Bus()
     kinds: list[str] = []
     bus.add_listener(lambda kind, data: kinds.append(kind))
@@ -125,3 +125,22 @@ def test_click_and_say_publish_changed_but_a_failed_say_does_not():
             await c.post("/click", data={"data": "pjv:inconnu"}, headers={"X-CSRF": token})
     asyncio.run(go())
     assert kinds.count("changed") == 2
+
+
+def test_failed_say_does_not_publish_changed(monkeypatch):
+    def boom(svc, text):
+        raise RuntimeError("service en panne")
+    monkeypatch.setattr(server.actions, "submit", boom)
+    bus = live.Bus()
+    kinds: list[str] = []
+    bus.add_listener(lambda kind, data: kinds.append(kind))
+    app, _ = make(bus=bus)
+
+    async def go():
+        async with TestClient(TestServer(app)) as c:
+            await login(c)
+            token = await csrf_of(c)
+            r = await c.post("/say", data={"text": "x"}, headers={"X-CSRF": token})
+            assert r.status == 200                                # fragment d'erreur, pas d'exception
+    asyncio.run(go())
+    assert "changed" not in kinds
