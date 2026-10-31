@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sqlite3
 import tarfile
 from datetime import datetime
@@ -103,3 +104,26 @@ def test_main_alerts_once_on_failure_and_stays_quiet_on_success(tmp_path):
 def test_alert_without_telegram_credentials_does_not_raise(tmp_path):
     env = {"BACKUP_DATA": str(tmp_path / "nope"), "BACKUP_DIR": str(tmp_path / "s")}
     assert backup.main([], env, NOW) == 1                          # send par défaut : pas de jeton -> ignoré
+
+
+def test_only_exact_dated_names_are_pruned_or_checked(tmp_path):
+    data, dest = tmp_path / "data", tmp_path / "sauv"
+    make_dbs(data)
+    dest.mkdir()
+    odd = dest / "abcd-ef-gh.tgz"                        # même gabarit ????-??-??, pas une date
+    odd.write_bytes(b"pas une sauvegarde")
+    env = {"BACKUP_DATA": str(data), "BACKUP_DIR": str(dest)}
+    assert backup.main([], env, NOW, lambda text: None) == 0
+    assert backup.main(["--check"], env, NOW, lambda text: None) == 0    # la vraie, pas abcd-ef-gh.tgz
+    backup.prune(dest, keep=0)
+    assert odd.exists() and not (dest / "2026-10-31.tgz").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="droits POSIX")
+def test_backup_directory_is_private(tmp_path):
+    data, dest = tmp_path / "data", tmp_path / "sauv"
+    make_dbs(data)
+    dest.mkdir(mode=0o755)
+    dest.chmod(0o755)
+    backup.run_backup(data, dest, NOW)
+    assert dest.stat().st_mode & 0o777 == 0o700

@@ -95,7 +95,7 @@ Python · python-telegram-bot · APScheduler · SQLite (FTS5) · Pydantic · Lit
 
 ## Sauvegardes
 
-Copie nocturne à 03:10 de `data/coach.sqlite` et `data/memory.sqlite` dans `~/sauvegardes/` (14 conservées), via [`deploy/second-brain-backup.timer`](deploy/second-brain-backup.timer).  
+Copie nocturne à 03:10 (horloge de la VM, en UTC) de `data/coach.sqlite` et `data/memory.sqlite` dans `~/sauvegardes/` (14 conservées), via [`deploy/second-brain-backup.timer`](deploy/second-brain-backup.timer).  
 Tout échec est signalé sur Telegram.  
 Contrôle : `python deploy/backup.py --check`.
 

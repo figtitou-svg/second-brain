@@ -10,3 +10,4 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/second-brain
 ExecStart=/home/ubuntu/second-brain/.venv/bin/python deploy/backup.py
 Nice=19
+UMask=0077

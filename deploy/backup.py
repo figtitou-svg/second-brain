@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import tarfile
@@ -21,6 +22,7 @@ from typing import Callable, Mapping
 DATABASES = ("coach.sqlite", "memory.sqlite")
 KEEP = 14
 ROOT = Path(__file__).resolve().parent.parent
+_ARCHIVE = re.compile(r"\d{4}-\d{2}-\d{2}\.tgz")
 
 
 def snapshot(src: Path, dest: Path) -> None:
@@ -38,10 +40,15 @@ def snapshot(src: Path, dest: Path) -> None:
         source.close()
 
 
+def archives(dest_dir: Path) -> list[Path]:
+    """Les archives AAAA-MM-JJ.tgz (chiffres seulement), de la plus ancienne à la plus récente."""
+    return sorted(p for p in dest_dir.glob("*.tgz") if _ARCHIVE.fullmatch(p.name))
+
+
 def prune(dest_dir: Path, keep: int = KEEP) -> None:
     """Ne touche qu'aux archives AAAA-MM-JJ.tgz ; garde les `keep` plus récentes."""
-    archives = sorted(dest_dir.glob("????-??-??.tgz"))
-    for old in archives[:-keep] if keep > 0 else archives:
+    found = archives(dest_dir)
+    for old in found[:-keep] if keep > 0 else found:
         old.unlink()
 
 
@@ -66,6 +73,10 @@ def verify(archive: Path) -> None:
 
 def run_backup(data_dir: Path, dest_dir: Path, now: datetime, keep: int = KEEP) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        dest_dir.chmod(0o700)                # copies des bases : lisibles par le seul compte du bot
+    except OSError:
+        pass
     final = dest_dir / f"{now:%Y-%m-%d}.tgz"
     part = dest_dir / f"{now:%Y-%m-%d}.tgz.part"
     try:
@@ -104,7 +115,7 @@ def main(argv: list[str], env: Mapping[str, str], now: datetime | None = None,
     dest_dir = Path(env.get("BACKUP_DIR") or Path.home() / "sauvegardes")
     send = send or (lambda text: telegram_alert(env, text))
     if argv and argv[0] == "--check":
-        target = Path(argv[1]) if len(argv) > 1 else max(dest_dir.glob("????-??-??.tgz"), default=None)
+        target = Path(argv[1]) if len(argv) > 1 else max(archives(dest_dir), default=None)
         try:
             if target is None:
                 raise FileNotFoundError("aucune sauvegarde")
