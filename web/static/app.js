@@ -208,8 +208,7 @@
   let muted = false, audio = null;
   try { muted = localStorage.getItem("sound") === "off"; } catch (e) { /* stockage indisponible : son activé */ }
   const SEND = [[740, 0, 0.16]], RECEIVE = [[880, 0, 0.3], [1318.5, 0.12, 0.5]];
-  function unlockAudio() {
-    if (!soundBtn) return;
+  function unlockAudio() {                   // sur toutes les pages : le bandeau « direct » sonne aussi hors Discussion
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       if (audio.state === "suspended") audio.resume();
@@ -243,6 +242,8 @@
     unlockAudio(); chime(RECEIVE);
   });
   paintSound();
+  // premier geste sur n'importe quelle page (toucher, clavier) : le son est autorisé dès lors
+  for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, unlockAudio, {capture: true, once: true});
 
   async function say(text, target) {
     const thread = target && document.querySelector(target);
@@ -421,8 +422,12 @@
       tpl.innerHTML = html;
       for (const r of tpl.content.querySelectorAll(".reply")) r.classList.add("arrive");
       const nodes = [...tpl.content.children];
+      // on ne descend que si l'on était déjà en bas (ou si ton propre message est le dernier) : un lecteur
+      // remonté dans le fil n'est pas ramené de force
+      const atBottom = thread.getBoundingClientRect().bottom - window.innerHeight < 120;   // bas du fil visible
+      const mineLast = thread.lastElementChild?.querySelector(".said") != null;
       thread.append(...nodes);
-      nodes.at(-1)?.scrollIntoView({block: "end"});
+      if (atBottom || mineLast) nodes.at(-1)?.scrollIntoView({block: "end"});
     } else if (toast.hidden || !toast.querySelector("[data-cb]")) {
       show(html, false, undefined, true);                // ne remplace jamais un bandeau qui attend un choix
     }
@@ -430,17 +435,32 @@
     refresh();
   }
 
-  // un seul flux par page ; EventSource se reconnecte seul (le serveur suggère retry: 5000), sans boucle ici
+  // un seul flux par page visible ; EventSource se reconnecte seul (le serveur suggère retry: 5000), sans boucle
+  // ici. Un onglet caché ferme son flux (le serveur n'en garde que 4 : sinon les onglets s'évinceraient sans fin)
+  // et en rouvre un en revenant ; la fermeture voulue n'est pas une coupure (pas de rechargement forcé).
+  let es = null;
   function live() {
-    if (!csrf || !window.EventSource) return;
-    const es = new EventSource("/events");
-    let down = false;
-    es.addEventListener("open", () => { if (down) { down = false; refresh(true); } });
-    es.addEventListener("error", () => { down = true; });
-    es.addEventListener("changed", () => { if (Date.now() - ownAt > 4000) refresh(); });
-    es.addEventListener("bot", (ev) => {
-      try { onBot(JSON.parse(ev.data).id); } catch (e) { /* événement mal formé : ignoré */ }
+    if (!csrf || !window.EventSource || es) return;
+    const stream = es = new EventSource("/events");
+    let down = false;                          // propre à ce flux : seule une vraie erreur le lève
+    stream.addEventListener("open", () => { if (down) { down = false; recover(); } });
+    stream.addEventListener("error", () => { down = true; });
+    stream.addEventListener("changed", () => { if (Date.now() - ownAt > 4000) refresh(); });
+    stream.addEventListener("bot", (ev) => {
+      let id;
+      try { id = JSON.parse(ev.data).id; } catch (e) { return; }   // événement mal formé : ignoré
+      onBot(id).catch(() => {});
     });
   }
-  live();
+  // après une vraie coupure : tout est rechargé, le focus reste où il était (ou sur son remplaçant)
+  async function recover() {
+    const el = document.activeElement, anchor = describeAnchor(el);
+    await refresh(true);
+    if (el && el !== document.body && focusLost()) focusAnchor(anchor, el);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { es?.close(); es = null; }
+    else live();
+  });
+  if (document.visibilityState !== "hidden") live();
 })();
