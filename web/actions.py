@@ -71,6 +71,7 @@ class Exchange:
     at: float
     said: str
     replies: list[Reply]
+    ref: int | None = None
 
 
 class Discussion:
@@ -80,11 +81,15 @@ class Discussion:
         self._items: deque[Exchange] = deque(maxlen=limit)
         self._mutex = threading.Lock()
 
-    def add(self, said: str, replies: list[Reply]) -> Exchange:
-        ex = Exchange(time.time(), said, list(replies))
+    def add(self, said: str, replies: list[Reply], ref: int | None = None) -> Exchange:
+        ex = Exchange(time.time(), said, list(replies), ref)
         with self._mutex:
             self._items.append(ex)
         return ex
+
+    def find(self, ref: int) -> Exchange | None:
+        with self._mutex:
+            return next((e for e in self._items if e.ref == ref), None)
 
     def items(self) -> list[Exchange]:
         with self._mutex:

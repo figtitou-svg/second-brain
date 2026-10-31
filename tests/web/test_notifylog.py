@@ -147,3 +147,35 @@ def test_badge_computed_before_an_invalidation_is_not_kept():
     assert cache.get() is None
     cache.put({"a_trier": 2}, cache.generation)
     assert cache.get() == {"a_trier": 2}
+
+
+def test_on_logged_gets_id_text_and_translated_buttons_only_when_delivered():
+    db, got = Database(":memory:"), []
+    send = notifylog.logged(lambda t, b=None: True, lambda: db, TR, clock=lambda: NOW,
+                            on_logged=lambda i, text, rows: got.append((i, text, rows)))
+    assert send("Salut", [[("Fait", "done:b1")]]) is True
+    assert got == [(1, "Salut", [[("Fait", "ok:b1")]])]
+    undelivered = notifylog.logged(lambda t, b=None: False, lambda: db, TR, clock=lambda: NOW,
+                                   on_logged=lambda *a: got.append(a))
+    assert undelivered("Perdu") is False and len(got) == 1
+
+
+def test_on_logged_failure_never_changes_the_send():
+    db = Database(":memory:")
+
+    def boom(*a):
+        raise RuntimeError("bus en panne")
+    send = notifylog.logged(lambda t, b=None: "ok", lambda: db, TR, clock=lambda: NOW, on_logged=boom)
+    assert send("x") == "ok" and len(db.list_notifications()) == 1
+
+
+def test_on_logged_not_called_without_database():
+    got = []
+    send = notifylog.logged(lambda t, b=None: True, lambda: None, TR, on_logged=lambda *a: got.append(a))
+    assert send("alerte de démarrage") is True and got == []
+
+
+def test_log_notification_returns_the_row_id():
+    db = Database(":memory:")
+    assert db.log_notification("a", [], True, NOW) == 1
+    assert db.log_notification("b", [], True, NOW) == 2

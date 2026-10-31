@@ -1,5 +1,5 @@
 {% if ex %}
-<div class="exchange">
+<div class="exchange"{% if ex.ref is not none %} data-ref="{{ ex.ref }}"{% endif %}>
   {% if ex.said %}<p class="said">{{ ex.said }}</p>{% endif %}
   {% for r in ex.replies %}
   <div class="reply">{{ r.text | tg }}

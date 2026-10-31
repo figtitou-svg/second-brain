@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -47,6 +48,7 @@ AGENDA_VUES = ("jour", "semaine")
 PROJECT_NOT_FOUND = "Projet introuvable."
 NOTE_NOT_FOUND = "Note introuvable."
 BADGES_TTL = 15.0     # secondes : les pastilles du menu ne sont pas recalculées à chaque page
+HEARTBEAT = 25.0      # secondes : battement du flux /events (les proxys ne coupent pas une connexion muette)
 # clé des pastilles dans la requête (RequestKey typée quand aiohttp la connaît, ≥ 3.12 ; sinon le texte)
 BADGES_KEY: Any = web.RequestKey("badges", dict) if hasattr(web, "RequestKey") else "badges"
 
@@ -85,6 +87,7 @@ class Deps:
     components: Callable[[], list]    # -> list[health.ComponentState]
     quota: Callable[[], str]          # -> HTML Telegram de /quota
     views: Any = None                 # data.Views : pages « Organisation » (None : elles sont indisponibles)
+    bus: Any = None                   # live.Bus : le direct (None : pas de flux)
 
 
 def parse_day(text: str) -> date | None:
@@ -143,6 +146,23 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     discussion = actions.Discussion()
     fails: list[float] = []
     badge_cache = BadgeCache(badge_clock)
+    bus = deps.bus
+    if bus is not None:
+        def on_bot(kind: str, data: dict) -> None:       # historique : le message reste affiché au rechargement
+            if kind == "bot":
+                rows = [[(str(l), str(c)) for l, c in row] for row in data.get("buttons") or []]
+                discussion.add("", [Reply(str(data.get("text", "")), rows)], ref=data.get("id"))
+        bus.add_listener(on_bot)
+
+        async def attach_bus(app: web.Application) -> None:
+            bus.attach(asyncio.get_running_loop())
+        on_startup = [attach_bus]
+    else:
+        on_startup = []
+
+    def changed() -> None:
+        if bus is not None:
+            bus.publish("changed")
 
     def session(request: web.Request) -> str | None:
         """Jeton CSRF de la session si le cookie est valide, sinon None."""
@@ -185,7 +205,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
                     raise web.HTTPForbidden(text="Origine refusée.")
                 if not _same(request.headers.get("X-CSRF", ""), csrf):
                     raise web.HTTPForbidden(text="Jeton de sécurité manquant : recharge la page.")
-            elif request.method == "GET" and not request.path.startswith("/fragment/"):
+            elif request.method == "GET" and not request.path.startswith(("/fragment/", "/events")):
                 request[BADGES_KEY] = await badges()      # pages entières seulement : le menu est dans la mise en page
             return await handler(request)
         return wrapped
@@ -284,6 +304,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
                 discussion.add(text.strip(), [Reply(actions.CLICK_FAILED)])
             return error_fragment(request, actions.CLICK_FAILED)
         badge_cache.invalidate()            # l'action a pu changer les nombres du menu
+        changed()
         ex = discussion.add(text.strip(), replies) if text.strip() else None
         return page("_exchange.html", request, ex=ex)
 
@@ -292,9 +313,46 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         data = str(form.get("data", ""))
         reply = await blocking(actions.click, deps.svc, data)
         badge_cache.invalidate()            # l'action a pu changer les nombres du menu
+        changed()
         if form.get("discuss") == "1":     # réponse qui attend une suite : elle reste dans la Discussion
             discussion.add(str(form.get("label", "")).strip()[:200] or data, [reply])
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
+
+    async def events(request: web.Request) -> web.StreamResponse:
+        if bus is None:
+            raise web.HTTPNotFound()
+        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-store",
+                                           "X-Accel-Buffering": "no"})
+        await resp.prepare(request)
+        stream = bus.open()
+        try:
+            await resp.write(b"retry: 5000\n\n")
+            while True:
+                try:
+                    item = await asyncio.wait_for(stream.queue.get(), HEARTBEAT)
+                except asyncio.TimeoutError:
+                    await resp.write(b": ping\n\n")
+                    continue
+                if item is None:
+                    break
+                kind, data = item
+                body = {"id": data.get("id")} if kind == "bot" else {}       # jamais de texte dans le flux
+                await resp.write(f"event: {kind}\ndata: {json.dumps(body)}\n\n".encode())
+        except ConnectionResetError:
+            pass
+        finally:
+            bus.close(stream)
+        return resp
+
+    async def message_fragment(request: web.Request) -> web.Response:
+        try:
+            ref = int(request.match_info["id"])
+        except ValueError:
+            raise web.HTTPNotFound()
+        ex = discussion.find(ref)
+        if ex is None:
+            raise web.HTTPNotFound()
+        return page("_exchange.html", request, ex=ex)
 
     # --- pages « Organisation » : page entière (erreur dans la mise en page) et fragment nu ---------------
 
@@ -373,11 +431,13 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
 
     app = web.Application()
     app.on_response_prepare.append(security_headers)
+    app.on_startup.extend(on_startup)
     app.add_routes([
         web.get("/login", login_form), web.post("/login", login), web.post("/logout", protected(logout)),
         web.get("/", protected(home)), web.get("/fragment/home", protected(home_fragment)),
         web.get("/discussion", protected(discussion_page)), web.get("/systeme", protected(system_page)),
         web.post("/say", protected(say)), web.post("/click", protected(click)),
+        web.get("/events", protected(events)), web.get("/fragment/message/{id}", protected(message_fragment)),
         *[route for name, (full, fragment) in pages.items()
           for route in (web.get(f"/{name}", protected(full)), web.get(f"/fragment/{name}", protected(fragment)))],
         *[route for name, (full, fragment) in details.items()

@@ -18,7 +18,7 @@ from web import data, server, system
 NOW = dt(2026, 10, 27, 10, 27)
 
 
-def make(views=True, svc=None, notes=None, break_badges=False, badge_clock=None):
+def make(views=True, svc=None, notes=None, break_badges=False, badge_clock=None, bus=None):
     """App de test. `notes` : fournisseur de notes des Views ; `break_badges` : Views.badges lève (panne des
     pastilles) ; `badge_clock` : horloge du cache des pastilles."""
     db = Database(":memory:")
@@ -34,7 +34,7 @@ def make(views=True, svc=None, notes=None, break_badges=False, badge_clock=None)
     deps = server.Deps(
         svc=svc or BotService(FakeCoach([]), FakeMemory(), FakeRouter("x"), 42),
         home=lambda: data.build_home(db, sched, agenda, NOW), machine=system.machine, errors=system.ErrorLog(),
-        components=lambda: [], quota=lambda: "q", views=views or None)
+        components=lambda: [], quota=lambda: "q", views=views or None, bus=bus)
     extra = {"badge_clock": badge_clock} if badge_clock else {}
     return server.create_app(deps, PASSWORD, "0" * 64, clock=lambda: 1_800_000_000.0, **extra), db
 

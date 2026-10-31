@@ -29,7 +29,7 @@ from coach.calendar_client import GoogleCalendarClient  # noqa: E402
 from coach.db import Database  # noqa: E402
 from coach.rules import load_rules  # noqa: E402
 from coach.scheduler import CoachScheduler  # noqa: E402
-from web import data as web_data, notifylog, server as web_server, system as web_system  # noqa: E402
+from web import data as web_data, live as web_live, notifylog, server as web_server, system as web_system  # noqa: E402
 
 log = logging.getLogger("run")
 
@@ -63,7 +63,7 @@ def _tr(cb: str) -> str:
 
 
 def web_deps(service: BotService, db: Database, sched: CoachScheduler, hl: health.Health,
-             errors: web_system.ErrorLog) -> web_server.Deps:
+             errors: web_system.ErrorLog, bus: web_live.Bus | None = None) -> web_server.Deps:
     """Ce que lit la page web : le même service, la même base et le même planificateur que le bot."""
     agenda = web_data.AgendaCache(sched.calendar.agenda)
     return web_server.Deps(
@@ -73,7 +73,7 @@ def web_deps(service: BotService, db: Database, sched: CoachScheduler, hl: healt
         errors=errors,
         components=hl.snapshot,
         quota=quota.report,
-        views=web_data.Views(db, sched, agenda, notes=web_data.MemoryNotes()))
+        views=web_data.Views(db, sched, agenda, notes=web_data.MemoryNotes()), bus=bus)
 
 
 def start_web(deps: web_server.Deps | None):
@@ -100,7 +100,9 @@ def main() -> None:
     # `record` avale l'erreur). Ordre d'origine conservé : startup_check d'abord, Database() ensuite.
     db: Database | None = None
     # l'unique `notify` du programme : envoie via Telegram et journalise (sans jamais gêner l'envoi)
-    notify = notifylog.logged(_telegram_notify(cfg.token, cfg.allowed_user_id), lambda: db, _tr)
+    bus = web_live.Bus()                    # le direct du site : un seul bus, partagé par notify et la page web
+    notify = notifylog.logged(_telegram_notify(cfg.token, cfg.allowed_user_id), lambda: db, _tr,
+                              on_logged=lambda i, text, rows: bus.publish("bot", {"id": i, "text": text, "buttons": rows}))
     hl = health.Health(notify)
     health.set_instance(hl)
     health.startup_check(notify)
@@ -161,7 +163,7 @@ def main() -> None:
     # un seul BotService : Telegram et la page web font exactement la même chose
     service = BotService(CoachAdapter(), MemoryAdapter(), RouterAdapter(), cfg.allowed_user_id, journal=journal.add)
     try:
-        start_web(web_deps(service, db, sched, hl, errors))
+        start_web(web_deps(service, db, sched, hl, errors, bus))
     except Exception:  # noqa: BLE001 - même la construction des dépendances ne doit pas bloquer le bot
         log.exception("page web : préparation impossible, le bot continue sans elle")
     asyncio.set_event_loop(asyncio.new_event_loop())  # Python 3.14 : plus de boucle implicite

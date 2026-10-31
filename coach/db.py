@@ -318,9 +318,10 @@ class Database:
         self._exec("DELETE FROM notifications WHERE key=?", (key,))
 
     # --- journal des messages envoyés par le bot ----------------------------------
-    def log_notification(self, text: str, buttons: list, delivered: bool, at: datetime) -> None:
-        self._exec("INSERT INTO notifications_log (sent_at,text,buttons,delivered) VALUES (?,?,?,?)",
-                   (_utc(at), text, json.dumps(buttons, ensure_ascii=False), int(bool(delivered))))
+    def log_notification(self, text: str, buttons: list, delivered: bool, at: datetime) -> int:
+        cur = self._exec("INSERT INTO notifications_log (sent_at,text,buttons,delivered) VALUES (?,?,?,?)",
+                         (_utc(at), text, json.dumps(buttons, ensure_ascii=False), int(bool(delivered))))
+        return int(cur.lastrowid)
 
     def list_notifications(self, limit: int = 200, since: datetime | None = None) -> list[LoggedNotification]:
         rows = (self._query("SELECT * FROM notifications_log WHERE sent_at >= ? ORDER BY sent_at DESC, id DESC LIMIT ?",
