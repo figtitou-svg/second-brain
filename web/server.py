@@ -288,6 +288,10 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     async def discussion_page(request: web.Request) -> web.Response:
         return page("discussion.html", request, exchanges=discussion.items(), commands=COMMANDS)
 
+    async def discussion_fragment(request: web.Request) -> web.Response:
+        """Le fil seul : l'onglet qui revient (ou se reconnecte) y prend les messages du bot manqués."""
+        return page("_thread_body.html", request, exchanges=discussion.items())
+
     async def system_page(request: web.Request) -> web.Response:
         def gather() -> dict:
             return {"machine": deps.machine(), "errors": deps.errors.entries()[:20],
@@ -436,6 +440,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         web.get("/login", login_form), web.post("/login", login), web.post("/logout", protected(logout)),
         web.get("/", protected(home)), web.get("/fragment/home", protected(home_fragment)),
         web.get("/discussion", protected(discussion_page)), web.get("/systeme", protected(system_page)),
+        web.get("/fragment/discussion", protected(discussion_fragment)),
         web.post("/say", protected(say)), web.post("/click", protected(click)),
         web.get("/events", protected(events)), web.get("/fragment/message/{id}", protected(message_fragment)),
         *[route for name, (full, fragment) in pages.items()

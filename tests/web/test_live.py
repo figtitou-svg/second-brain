@@ -144,3 +144,27 @@ def test_failed_say_does_not_publish_changed(monkeypatch):
             assert r.status == 200                                # fragment d'erreur, pas d'exception
     asyncio.run(go())
     assert "changed" not in kinds
+
+
+def test_discussion_fragment_requires_login_and_matches_the_page_thread():
+    bus = live.Bus()
+    app, _ = make(bus=bus)
+
+    async def go():
+        async with TestClient(TestServer(app)) as c:
+            assert (await c.get("/fragment/discussion", allow_redirects=False)).status == 302
+            await login(c)
+            bus.publish("bot", {"id": 8, "text": "Manqué <script>x</script>", "buttons": []})
+            token = await csrf_of(c)
+            await c.post("/say", data={"text": "/help"}, headers={"X-CSRF": token})
+            r = await c.get("/fragment/discussion", allow_redirects=False)
+            frag = await r.text()
+            assert r.status == 200 and 'data-ref="8"' in frag
+            assert "<script>" not in frag and "&lt;script&gt;" in frag
+            assert 'data-ref="999"' not in frag and "<html" not in frag     # fragment nu, pas de mise en page
+            assert frag.count('class="exchange"') == 2                       # le message du bot et le tien
+            page = await (await c.get("/discussion")).text()
+            start = page.index('<div id="thread"')
+            thread = page[page.index(">", start) + 1:page.index('<div class="shortcuts"')]
+            assert thread.rsplit("</div>", 1)[0] == frag                     # même rendu que la page
+    asyncio.run(go())
