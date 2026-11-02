@@ -313,7 +313,10 @@ a.item:hover{color:var(--text)}
   border:1px solid var(--line)}
 .ptask>*{margin:0;min-width:0}
 .ptitle{font-weight:600;overflow-wrap:anywhere}
-.ptask .row-actions button{padding:0 8px;font-size:14px}
+.ptask{position:relative}
+.ptask .ptitle a::after{content:"";position:absolute;inset:0;border-radius:12px}
+.ptask:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.ptask .ptitle a:focus-visible{outline:none}
 .card.suggestions{border-left:4px solid var(--accent)}
 .steps{list-style:none;padding:0;margin:0;position:relative}
 .step{position:relative;display:flex;gap:12px;min-width:0;padding-bottom:16px}
@@ -468,3 +471,9 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .sortmenu nav{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:4px}
 .sortmenu nav a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--line);color:var(--text);text-decoration:none}
 .sortmenu nav a.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+/* liste des tâches : aucune action sur la carte, toute la carte ouvre la page de la tâche (actions là-bas) */
+.taskcard{position:relative}
+.taskcard .rtitle a::after{content:"";position:absolute;inset:0;border-radius:var(--radius)}
+.taskcard:hover{filter:brightness(1.08)}
+.taskcard .rtitle a:focus-visible{outline:none}
+.taskcard:focus-within{outline:2px solid var(--accent);outline-offset:2px}

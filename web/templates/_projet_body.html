@@ -9,11 +9,6 @@
     {% if t.due %}<span>⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% endif %}
     <span>⏱ {{ t.estimated_minutes|dur }}</span>
     {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}</p>{% endif %}
-  <div class="row-actions">
-    <button type="button" class="primary" data-cb="td:{{ t.id }}" aria-label="Fait : {{ t.title }}">✅ Fait</button>
-    <button type="button" data-cb="tpo:{{ t.id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
-    <button type="button" data-cb="tnw:{{ t.id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine prochaine</button>
-  </div>
 </li>
 {% endmacro %}
 <div class="pdetail" style="--c: {{ p.color }}">
