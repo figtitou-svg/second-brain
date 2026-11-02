@@ -501,8 +501,8 @@ def test_project_detail_header_facts_timeline_loose_suggestions_and_actions():
         assert "[IA] Entraîner" in steps[1]
         tid = next(t.id for t in db.list_project_tasks(p.id) if t.title == "[IA] Entraîner")
         for cb in ("td", "tpo", "tnw"):
-            assert f'data-cb="{cb}:{tid}"' in steps[1], cb
-        assert 'aria-label="Semaine prochaine : [IA] Entraîner"' in text
+            assert f'data-cb="{cb}:{tid}"' not in steps[1], cb
+        assert f'href="/taches/{tid}"' in steps[1] and "<button" not in steps[1]
         loose = text.split('id="loose-h"')[1]
         assert "Sans étape" in text and "[IA] Vrac" in loose
         for cb in ("add", "plan", "no"):
