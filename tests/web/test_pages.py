@@ -719,3 +719,21 @@ def test_task_detail_page_shows_description_and_category_color():
         r = await c.get("/taches/inconnu")
         assert r.status == 404 and "Tâche introuvable" in await r.text()
     run(app, scenario)
+
+
+def test_task_category_prefix_gives_color_and_tag():
+    from web.data import category_color, split_category
+    assert split_category("[Esp] Fiche 3") == ("Esp", "Fiche 3") and split_category("Sans préfixe") == (None, "Sans préfixe")
+    assert category_color("Esp") == category_color("esp") != category_color("Per")
+    app, db = make()
+    a, b = Task(title="[Esp] Fiche 3"), Task(title="[Per] Courses")
+    db.upsert_task(a), db.upsert_task(b)
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/taches")).text()
+        assert f'style="--c: {category_color("Esp")}"' in text.split(f'href="/taches/{a.id}"')[0].rsplit("<li", 1)[1]
+        ra = text.split(f'href="/taches/{a.id}"')[1].split("</li>")[0]
+        assert ">Fiche 3</a>" in ra and '<p class="tag">Esp</p>' in ra
+        assert '<p class="tag">Per</p>' in text.split(f'href="/taches/{b.id}"')[1]
+    run(app, scenario)

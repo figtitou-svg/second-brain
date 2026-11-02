@@ -5,7 +5,8 @@
 {% set STATUT = {"pending": "À faire", "scheduled": "Planifiée", "done": "Faite", "dropped": "Ignorée"} %}
 <div class="tdetail" style="--c: {{ t.color }}">
   <p class="meta">
-    <span class="tag">{% if t.project_id %}<a href="/projets/{{ t.project_id }}">{{ t.project }}</a>{% else %}{{ t.project }}{% endif %}</span>
+    {% if t.category %}<span class="tag">{{ t.category }}</span>{% endif %}
+    <span class="{{ 'muted' if t.category else 'tag' }}">{% if t.project_id %}<a href="/projets/{{ t.project_id }}">{{ t.project }}</a>{% else %}{{ t.project }}{% endif %}</span>
     <span>{{ STATUT.get(t.status, t.status) }}</span>
     {% if t.overdue %}<span class="due">En retard</span>{% endif %}
   </p>

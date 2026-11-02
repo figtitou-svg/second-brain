@@ -2,6 +2,7 @@
 """Données structurées de la page web (lecture seule) : accueil « coup d'œil »."""
 from __future__ import annotations
 
+import colorsys
 import hashlib
 import logging
 import threading
@@ -11,7 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
-from coach import fmt
+from coach import courses, fmt
 from coach import project_service, project_watch, projects
 from coach.db import Database
 from coach.models import Suggestion, Task
@@ -36,6 +37,26 @@ def project_colors(db: Database) -> dict[str, str]:
     les 8 premiers et inchangée quand un autre projet est terminé ; au-delà, la palette recommence."""
     ranked = sorted(db.list_projects(), key=lambda p: (p.created_at, p.id))
     return {p.id: PALETTE[i % len(PALETTE)] for i, p in enumerate(ranked)}
+
+
+def category_color(code: str) -> str:
+    """Couleur propre à une catégorie de tâche (le préfixe `[Esp]` du titre) : teinte stable tirée du code, la
+    même partout et d'une session à l'autre (« Esp » et « esp » ont la même)."""
+    hue = int(hashlib.sha1(projects.fold(code).encode()).hexdigest(), 16) % 360
+    r, g, b = colorsys.hls_to_rgb(hue / 360, 0.66, 0.62)
+    return f"#{round(r * 255):02X}{round(g * 255):02X}{round(b * 255):02X}"
+
+
+def split_category(title: str) -> tuple[str | None, str]:
+    """(catégorie, titre sans le préfixe) : « [Esp] Fiche 3 » -> ("Esp", "Fiche 3") ; sans préfixe, (None, titre)."""
+    m = coach_focus.SUBJECT_RE.match(title)
+    rest = title[m.end():].strip() if m else ""
+    return (m.group(1).strip(), rest) if m and m.group(1).strip() and rest else (None, title)
+
+
+def category_label(code: str) -> str:
+    """Nom complet de la catégorie quand course_names.yaml le donne, sinon le code tel quel (jamais deviné)."""
+    return courses.course_names().get(code.upper(), courses.course_names().get(code, code))
 
 
 def _color(colors: dict[str, str], project_id: str | None) -> str:
@@ -397,6 +418,14 @@ class TaskRow:
     minutes: int
     step: str | None
     color: str
+    category: str | None = None   # préfixe `[Esp]` du titre : donne sa couleur et son étiquette à la tâche
+    name: str = ""                # titre sans ce préfixe
+
+
+def task_row(t: Task, now: datetime, step: str | None, project_color: str) -> TaskRow:
+    cat, name = split_category(t.title)
+    return TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes, step,
+                   category_color(cat) if cat else project_color, category_label(cat) if cat else None, name)
 
 
 @dataclass(frozen=True)
@@ -417,6 +446,8 @@ class TaskDetail:
     boost: int
     reschedule_count: int
     blocks: list[tuple[datetime, datetime]]
+    category: str | None = None   # nom (ou code) de la catégorie, préfixe `[Esp]` du titre
+    name: str = ""
 
 
 def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetail | None:
@@ -426,10 +457,12 @@ def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetai
     p = db.get_project(t.project_id) if t.project_id else None
     step = db.get_milestone(t.milestone_id) if t.milestone_id else None
     blocks = sorted((b.start, b.end) for b in db.list_blocks(t.id, open_only=True))
+    cat, name = split_category(t.title)
+    color = category_color(cat) if cat else _color(project_colors(db), p.id if p else None)
     return TaskDetail(t.id, t.title, t.description, t.status, t.priority, t.due, t.not_before, t.estimated_minutes,
                       t.due is not None and t.due < now and t.status in projects.OPEN, p.id if p else None,
                       p.name if p else "Sans projet", step.title if step else None,
-                      _color(project_colors(db), p.id if p else None), t.boost, t.reschedule_count, blocks)
+                      color, t.boost, t.reschedule_count, blocks, category_label(cat) if cat else None, name)
 
 
 @dataclass(frozen=True)
@@ -464,8 +497,7 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list
                 and ((p is not None and t.project_id == p.id) or (p is None and t.project_id not in names))]
         if not mine:
             continue
-        rows = [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
-                        steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+        rows = [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
                 for t in sorted(mine, key=lambda t: (t.due is None, t.due or now, t.title))]
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
                                 p.id if p else None, rows))
@@ -819,8 +851,7 @@ def unplanned_tasks(db: Database, now: datetime) -> list[TaskRow]:
     todo = [t for t in db.list_tasks("pending") if t.id not in placed]
     colors = project_colors(db)
     steps = {m.id: m.title for p in db.list_projects() for m in db.list_milestones(p.id)}
-    return [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
-                    steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+    return [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
             for t in sorted(todo, key=lambda t: (t.due is None, t.due or now, t.title))]
 
 
