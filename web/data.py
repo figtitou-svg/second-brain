@@ -471,9 +471,31 @@ class TaskGroup:
     color: str
     project_id: str | None
     rows: list[TaskRow]
+    key: str = ""      # clé stable du groupe (état ouvert/replié gardé au rechargement)
 
 
-def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list[TaskGroup], dict[str, int]]:
+TRIS = ("projet", "categorie", "date")
+
+
+def regroup(groups: list[TaskGroup], tri: str, now: datetime) -> list[TaskGroup]:
+    """Réorganise les groupes par projet : par catégorie (préfixe `[Esp]`, « Sans catégorie » en dernier) ou en une
+    seule liste par échéance. Mêmes tâches, autre présentation."""
+    rows = [r for g in groups for r in g.rows]
+    by_due = lambda r: (r.due is None, r.due or now, r.title)  # noqa: E731
+    if tri == "date":
+        return [TaskGroup("Par échéance", NO_PROJECT, None, sorted(rows, key=by_due), "date")] if rows else []
+    cats: dict[str, list[TaskRow]] = {}
+    for r in rows:
+        cat, _ = split_category(r.title)
+        cats.setdefault(projects.fold(cat) if cat else "", []).append(r)
+    out = []
+    for k in sorted(cats, key=lambda k: (k == "", k)):
+        mine = sorted(cats[k], key=by_due)
+        out.append(TaskGroup(mine[0].category or "Sans catégorie", mine[0].color if k else NO_PROJECT, None, mine, f"cat:{k or 'aucune'}"))
+    return out
+
+
+def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "projet") -> tuple[list[TaskGroup], dict[str, int]]:
     """Tâches ouvertes regroupées par projet (puis « Sans projet »), et le nombre de tâches pour chaque filtre."""
     filtre = filtre if filtre in FILTERS else "tout"
     colors = project_colors(db)
@@ -500,8 +522,8 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list
         rows = [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
                 for t in sorted(mine, key=lambda t: (t.due is None, t.due or now, t.title))]
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
-                                p.id if p else None, rows))
-    return groups, counts
+                                p.id if p else None, rows, p.id if p else "sans-projet"))
+    return (groups if tri not in TRIS or tri == "projet" else regroup(groups, tri, now)), counts
 
 
 # --- étape 2 : Projets -----------------------------------------------------------------------------------
@@ -648,11 +670,12 @@ class Views:
     def focus(self) -> list[FocusRow]:
         return focus_rows(self.sched, self.now())
 
-    def tasks(self, filtre: str) -> dict:
+    def tasks(self, filtre: str, tri: str = "projet") -> dict:
         now = self.now()
         filtre = filtre if filtre in FILTERS else "tout"
-        groups, counts = task_groups(self.db, now, filtre)
-        return {"groups": groups, "counts": counts, "filtre": filtre, "now": now}
+        tri = tri if tri in TRIS else "projet"
+        groups, counts = task_groups(self.db, now, filtre, tri)
+        return {"groups": groups, "counts": counts, "filtre": filtre, "tri": tri, "now": now}
 
     def task(self, task_id: str) -> TaskDetail | None:
         return task_detail(self.db, task_id, self.now())

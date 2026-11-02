@@ -1,13 +1,19 @@
 {# Tâches : pastilles de filtre (aria-current="true" : "page" est réservé au menu), puis un groupe repliable par projet.
    Couleurs (--c) internes ; titres, noms de projet et d'étape échappés. #}
+{% set TRIS = [("projet", "Projet"), ("categorie", "Catégorie"), ("date", "Échéance")] %}
+{% set tq = "" if tasks.tri == "projet" else "&tri=" ~ tasks.tri %}
 {% set FILTRES = [("tout", "Tout"), ("retard", "En retard"), ("semaine", "Cette semaine"), ("sans-projet", "Sans projet")] %}
 <nav class="chips" aria-label="Filtres">
   {% for f, label in FILTRES %}
-  <a href="/taches?filtre={{ f }}"{% if tasks.filtre == f %} aria-current="true"{% endif %}{% if f == "retard" and tasks.counts[f] %} class="has-late"{% endif %}>{{ label }} <span class="n">{{ tasks.counts[f] }}</span></a>
+  <a href="/taches?filtre={{ f }}{{ tq }}"{% if tasks.filtre == f %} aria-current="true"{% endif %}{% if f == "retard" and tasks.counts[f] %} class="has-late"{% endif %}>{{ label }} <span class="n">{{ tasks.counts[f] }}</span></a>
   {% endfor %}
 </nav>
+<details class="sortmenu">
+  <summary>⇅ Trier<span class="muted"> : {% for k, l in TRIS %}{% if k == tasks.tri %}{{ l }}{% endif %}{% endfor %}</span></summary>
+  <nav aria-label="Tri">{% for k, l in TRIS %}<a href="/taches?filtre={{ tasks.filtre }}{{ '' if k == 'projet' else '&tri=' ~ k }}"{% if k == tasks.tri %} class="on" aria-label="{{ l }} (tri actuel)"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+</details>
 {% for g in tasks.groups %}
-<details class="tgroup" open data-gkey="{{ g.project_id or 'sans-projet' }}" style="--c: {{ g.color }}">
+<details class="tgroup" open data-gkey="{{ g.key or g.project_id or 'sans-projet' }}" style="--c: {{ g.color }}">
   <summary><span class="dot" aria-hidden="true"></span><span class="gname">{{ g.name }}</span>
     <span class="n">{{ g.rows|length }} tâche{{ "s" if g.rows|length > 1 }}</span></summary>
   <ul class="cards task-list">

@@ -737,3 +737,21 @@ def test_task_category_prefix_gives_color_and_tag():
         assert ">Fiche 3</a>" in ra and '<p class="tag">Esp</p>' in ra
         assert '<p class="tag">Per</p>' in text.split(f'href="/taches/{b.id}"')[1]
     run(app, scenario)
+
+
+def test_tasks_sort_menu_by_category_and_date():
+    app, db = make()
+    db.upsert_task(Task(title="[Esp] A", due=NOW + timedelta(days=3)))
+    db.upsert_task(Task(title="[Per] B", due=NOW + timedelta(days=1)))
+    db.upsert_task(Task(title="C"))
+
+    async def scenario(c):
+        await login(c)
+        t = await (await c.get("/taches?tri=categorie")).text()
+        assert t.index(">Esp<") < t.index(">Per<") < t.index("Sans catégorie")
+        assert 'data-refresh="/fragment/taches?filtre=tout&amp;tri=categorie"' in t and "tri=categorie" in t.split("chips")[1]
+        d = await (await c.get("/fragment/taches?tri=date")).text()
+        assert d.count('class="tgroup"') == 1 and d.index("[Per] B") < d.index("[Esp] A") < d.index(">C<")
+        x = await (await c.get("/taches?tri=%3Cx%3E")).text()
+        assert 'data-refresh="/fragment/taches?filtre=tout"' in x and "<x>" not in x
+    run(app, scenario)

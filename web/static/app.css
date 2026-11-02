@@ -460,3 +460,11 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .tdetail .card{border-left:4px solid var(--c)}
 .tdetail .notebody{white-space:pre-wrap;overflow-wrap:anywhere}
 .tgroup .row-actions.secondary button{font-size:14px}
+/* tri des tâches : discret, replié par défaut */
+.sortmenu{margin-top:6px;font-size:13px}
+.sortmenu>summary{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 4px;color:var(--muted);cursor:pointer;list-style:none}
+.sortmenu>summary::-webkit-details-marker{display:none}
+.sortmenu>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sortmenu nav{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:4px}
+.sortmenu nav a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--line);color:var(--text);text-decoration:none}
+.sortmenu nav a.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}

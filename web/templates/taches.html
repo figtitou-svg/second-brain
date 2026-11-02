@@ -2,5 +2,5 @@
 {% block title %}Tâches · Second Brain{% endblock %}
 {% block main %}
 <h1>Tâches</h1>
-<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}">{% include "_taches_body.html" %}</section>
+<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}{{ '' if tasks.tri == 'projet' else '&tri=' ~ tasks.tri }}">{% include "_taches_body.html" %}</section>
 {% endblock %}
