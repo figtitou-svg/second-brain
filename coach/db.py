@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   not_before TEXT,
   boost INTEGER DEFAULT 0,
   project_id TEXT,
-  milestone_id TEXT
+  milestone_id TEXT,
+  description TEXT
 );
 CREATE TABLE IF NOT EXISTS blocks (
   id TEXT PRIMARY KEY,
@@ -159,7 +160,8 @@ class Database:
                     "ALTER TABLE tasks ADD COLUMN boost INTEGER DEFAULT 0",
                     "ALTER TABLE blocks ADD COLUMN style TEXT",
                     "ALTER TABLE tasks ADD COLUMN project_id TEXT",
-                    "ALTER TABLE tasks ADD COLUMN milestone_id TEXT"):
+                    "ALTER TABLE tasks ADD COLUMN milestone_id TEXT",
+                    "ALTER TABLE tasks ADD COLUMN description TEXT"):
             try:
                 self._conn.execute(ddl)
             except sqlite3.OperationalError:  # colonne déjà présente
@@ -182,18 +184,19 @@ class Database:
     # --- tasks -------------------------------------------------------------
     def upsert_task(self, t: Task) -> None:
         self._exec(
-            """INSERT INTO tasks (id,title,due,estimated_minutes,priority,status,source_id,reschedule_count,not_before,boost,project_id,milestone_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO tasks (id,title,due,estimated_minutes,priority,status,source_id,reschedule_count,not_before,boost,project_id,milestone_id,description)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET title=excluded.title, due=excluded.due,
                  estimated_minutes=excluded.estimated_minutes, priority=excluded.priority,
                  status=excluded.status, source_id=excluded.source_id,
                  reschedule_count=excluded.reschedule_count, not_before=excluded.not_before,
                  boost=excluded.boost, project_id=excluded.project_id,
-                 milestone_id=excluded.milestone_id""",
+                 milestone_id=excluded.milestone_id,
+                 description=COALESCE(excluded.description, tasks.description)""",
             (t.id, t.title, t.due.isoformat() if t.due else None, t.estimated_minutes,
              t.priority, t.status, t.source_id, t.reschedule_count,
              t.not_before.isoformat() if t.not_before else None, t.boost,
-             t.project_id, t.milestone_id),
+             t.project_id, t.milestone_id, t.description),
         )
 
     @staticmethod
@@ -201,7 +204,7 @@ class Database:
         return Task(id=r["id"], title=r["title"], due=_dt(r["due"]), not_before=_dt(r["not_before"]), boost=r["boost"] or 0, project_id=r["project_id"], milestone_id=r["milestone_id"],
                     estimated_minutes=r["estimated_minutes"] or 30, priority=r["priority"] or "medium",
                     status=r["status"], source_id=r["source_id"],
-                    reschedule_count=r["reschedule_count"] or 0)
+                    reschedule_count=r["reschedule_count"] or 0, description=r["description"])
 
     def get_task(self, task_id: str) -> Task | None:
         rows = self._query("SELECT * FROM tasks WHERE id=?", (task_id,))

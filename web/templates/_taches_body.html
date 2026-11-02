@@ -13,9 +13,10 @@
   <ul class="cards task-list">
     {% for t in g.rows %}
     <li class="rowcard taskcard{% if t.overdue %} overdue{% endif %}">
-      <h2 class="rtitle">{{ t.title }}</h2>
+      <h2 class="rtitle"><a href="/taches/{{ t.task_id }}">{{ t.title }}</a></h2>
+      <p class="tag">{{ g.name }}</p>
       <p class="meta">
-        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>{% endif %}
+        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% endif %}
         {% if t.minutes %}<span class="muted">⏱ {{ t.minutes|dur }}</span>{% endif %}
         {% if t.step %}<span class="muted step">Étape : {{ t.step }}</span>{% endif %}
         {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}
@@ -30,7 +31,7 @@
         <div class="row-actions secondary">
           <button type="button" data-cb="dur:{{ t.task_id }}" aria-label="Durée : {{ t.title }}">⏱ Durée</button>
           <button type="button" data-cb="tpo:{{ t.task_id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
-          <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine pro. : {{ t.title }}">📅 Semaine pro.</button>
+          <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine prochaine</button>
           <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Ignorer : {{ t.title }}">🗑 Ignorer</button>
         </div>
       </details>

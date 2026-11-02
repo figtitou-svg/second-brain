@@ -501,7 +501,7 @@ def test_project_detail_header_facts_timeline_loose_suggestions_and_actions():
         tid = next(t.id for t in db.list_project_tasks(p.id) if t.title == "[IA] Entraîner")
         for cb in ("td", "tpo", "tnw"):
             assert f'data-cb="{cb}:{tid}"' in steps[1], cb
-        assert 'aria-label="Semaine pro. : [IA] Entraîner"' in text
+        assert 'aria-label="Semaine prochaine : [IA] Entraîner"' in text
         loose = text.split('id="loose-h"')[1]
         assert "Sans étape" in text and "[IA] Vrac" in loose
         for cb in ("add", "plan", "no"):
@@ -535,7 +535,7 @@ def test_tasks_groups_have_stable_keys_for_fold_state():
         await login(c)
         text = await (await c.get("/taches")).text()
         assert f'data-gkey="{p.id}"' in text and 'data-gkey="sans-projet"' in text
-        assert 'aria-label="Semaine pro. : Avec projet">📅 Semaine pro.</button>' in text
+        assert 'aria-label="Semaine prochaine : Avec projet">📅 Semaine prochaine</button>' in text
     run(app, scenario)
 
 
@@ -626,7 +626,7 @@ def test_task_rows_fold_secondary_actions_into_more():
         assert f'data-gkey="t:{t.id}"' in more and "<summary>Plus" in more
         for cb in ("dur", "tpo", "tnw", "ign"):
             assert f'data-cb="{cb}:{t.id}"' in more and f'data-cb="{cb}:' not in visible, cb
-        assert 'aria-label="Semaine pro. : Envoyer le devis">📅 Semaine pro.</button>' in more
+        assert 'aria-label="Semaine prochaine : Envoyer le devis">📅 Semaine prochaine</button>' in more
         assert "<details class=\"more\" open" not in text                        # replié par défaut
     run(app, scenario)
 
@@ -658,7 +658,7 @@ def test_week_summary_due_times_use_scheduler_timezone():
         await login(c)
         text = await (await c.get("/semaine")).text()
         line = text.split("Rendu UTC")[1].split("</li>")[0]
-        assert "jeu. 29 oct." in line and "00h30" in line and "23h30" not in line
+        assert "jeudi 29 octobre" in line and "00h30" in line and "23h30" not in line
     run(app, scenario)
 
 
@@ -697,4 +697,25 @@ def test_refreshed_fragments_keep_the_focus_anchors_of_the_page():
         taches = await (await c.get("/fragment/taches")).text()
         keys = re.findall(r'data-gkey="([^"]+)"', taches)
         assert "sans-projet" in keys and p.id in keys and sum(k.startswith("t:") for k in keys) == 3
+    run(app, scenario)
+
+
+def test_task_detail_page_shows_description_and_category_color():
+    app, db = make()
+    p = Project(name="Projet IA", last_activity=NOW)
+    db.save_project(p)
+    t = Task(title="Envoyer le devis", project_id=p.id, description="Joindre <b>le PDF</b>\nà Marie")
+    db.upsert_task(t)
+
+    async def scenario(c):
+        await login(c)
+        text = await (await c.get("/taches")).text()
+        assert f'href="/taches/{t.id}"' in text and '<p class="tag">Projet IA</p>' in text
+        r = await c.get(f"/taches/{t.id}")
+        page = await r.text()
+        assert r.status == 200 and "Joindre &lt;b&gt;le PDF&lt;/b&gt;" in page and "<b>le PDF</b>" not in page
+        assert "Projet IA" in page and "Durée estimée" in page and f'data-cb="td:{t.id}"' in page
+        assert r.status == 200 and (await c.get(f"/fragment/taches/{t.id}")).status == 200
+        r = await c.get("/taches/inconnu")
+        assert r.status == 404 and "Tâche introuvable" in await r.text()
     run(app, scenario)

@@ -1,0 +1,39 @@
+{# Page d'une tâche : tout le détail (description, échéance, durée, priorité, projet, étape, créneaux) et les actions.
+   Couleur (--c) interne ; tous les textes échappés. #}
+{% set t = task %}
+{% set PRIO = {"low": "Basse", "medium": "Moyenne", "high": "Haute"} %}
+{% set STATUT = {"pending": "À faire", "scheduled": "Planifiée", "done": "Faite", "dropped": "Ignorée"} %}
+<div class="tdetail" style="--c: {{ t.color }}">
+  <p class="meta">
+    <span class="tag">{% if t.project_id %}<a href="/projets/{{ t.project_id }}">{{ t.project }}</a>{% else %}{{ t.project }}{% endif %}</span>
+    <span>{{ STATUT.get(t.status, t.status) }}</span>
+    {% if t.overdue %}<span class="due">En retard</span>{% endif %}
+  </p>
+  <section class="card" aria-labelledby="desc-h">
+    <h2 id="desc-h">Description</h2>
+    {% if t.description %}<p class="notebody">{{ t.description }}</p>{% else %}<p class="muted">Aucune description.</p>{% endif %}
+  </section>
+  <section class="card" aria-labelledby="info-h">
+    <h2 id="info-h">Informations</h2>
+    <dl class="pfacts">
+      <div><dt class="muted">Échéance</dt><dd>{% if t.due %}{{ t.due|fr_day }} à {{ t.due|hm }}{% else %}Aucune{% endif %}</dd></div>
+      {% if t.not_before %}<div><dt class="muted">À faire à partir du</dt><dd>{{ t.not_before|fr_day }}</dd></div>{% endif %}
+      <div><dt class="muted">Durée estimée</dt><dd>{{ t.minutes|dur }}</dd></div>
+      <div><dt class="muted">Priorité</dt><dd>{{ PRIO.get(t.priority, t.priority) }}{% if t.boost > 0 %} (remontée){% elif t.boost < 0 %} (abaissée){% endif %}</dd></div>
+      <div><dt class="muted">Projet</dt><dd>{{ t.project }}</dd></div>
+      {% if t.step %}<div><dt class="muted">Étape</dt><dd>{{ t.step }}</dd></div>{% endif %}
+      {% if t.reschedule_count %}<div><dt class="muted">Replanifiée</dt><dd>{{ t.reschedule_count }} fois</dd></div>{% endif %}
+      {% for s, e in t.blocks %}<div><dt class="muted">Créneau</dt><dd>{{ s|fr_day }} · {{ s|hm }}–{{ e|hm }}</dd></div>{% endfor %}
+    </dl>
+  </section>
+  {% if t.status in ("pending", "scheduled") %}
+  <div class="row-actions">
+    <button type="button" class="primary" data-cb="td:{{ t.task_id }}">✅ Fait</button>
+    <button type="button" data-cb="plan:{{ t.task_id }}">Planifier</button>
+    <button type="button" data-cb="dur:{{ t.task_id }}">⏱ Durée</button>
+    <button type="button" data-cb="tpo:{{ t.task_id }}">⏭ Demain</button>
+    <button type="button" data-cb="tnw:{{ t.task_id }}">📅 Semaine prochaine</button>
+    <button type="button" data-cb="ign:{{ t.task_id }}">🗑 Ignorer</button>
+  </div>
+  {% endif %}
+</div>

@@ -42,8 +42,9 @@ SYSTEM_PROMPT = (
     "ne répète pas la même tâche sous deux formulations, et mets une liste vide si rien n'est vraiment à faire. "
     "Réponds UNIQUEMENT avec un JSON de la forme "
     '{"tasks":[{"title":str,"do_on":"AAAA-MM-JJ"|null,"due":ISO8601|null,"estimated_minutes":int,'
-    '"priority":"low"|"medium"|"high","confidence":0..1}],'
+    '"priority":"low"|"medium"|"high","description":str|null,"confidence":0..1}],'
     '"events":[{"title":str,"start":ISO8601,"end":ISO8601|null,"location":str|null,"confidence":0..1}]}. '
+    "description = 1 à 3 phrases de contexte utiles tirées du texte (consignes, lieu, pièces à fournir), sinon null. "
     "Mets end à null si la durée n'est pas donnée. Listes vides si rien. "
     "Fuseau Europe/Paris. Aucun texte hors JSON. "
     "Pour les dates, utilise le calendrier fourni (ne calcule pas les jours de la semaine). Distingue bien : "
@@ -72,8 +73,9 @@ class ExtractedTask(BaseModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
     project: str | None = None    # nom d'un projet actif, si la tâche lui appartient clairement
     milestone: str | None = None  # titre d'une de ses étapes ouvertes
+    description: str | None = None  # 1 à 3 phrases de contexte tirées du texte (consignes, lieu, pièces…)
 
-    @field_validator("project", "milestone", mode="before")
+    @field_validator("project", "milestone", "description", mode="before")
     @classmethod
     def _hint_text(cls, v: Any) -> str | None:
         """Un indice de rattachement mal formé (False, 0, {}…) est ignoré : il ne doit pas faire perdre la tâche."""
@@ -182,6 +184,7 @@ def _build(items: list[ExtractedTask], source_id: str, now: datetime) -> list[Ta
         tasks.append(Task(
             id=_task_id(source_id, it.title), title=it.title.strip(), due=due, not_before=not_before,
             estimated_minutes=it.estimated_minutes, priority=it.priority, source_id=source_id,
+            description=(it.description or "").strip() or None,
         ))
     return tasks
 

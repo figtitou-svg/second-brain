@@ -400,6 +400,39 @@ class TaskRow:
 
 
 @dataclass(frozen=True)
+class TaskDetail:
+    task_id: str
+    title: str
+    description: str | None
+    status: str
+    priority: str
+    due: datetime | None
+    not_before: datetime | None
+    minutes: int
+    overdue: bool
+    project_id: str | None
+    project: str
+    step: str | None
+    color: str
+    boost: int
+    reschedule_count: int
+    blocks: list[tuple[datetime, datetime]]
+
+
+def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetail | None:
+    t = db.get_task(task_id)
+    if t is None:
+        return None
+    p = db.get_project(t.project_id) if t.project_id else None
+    step = db.get_milestone(t.milestone_id) if t.milestone_id else None
+    blocks = sorted((b.start, b.end) for b in db.list_blocks(t.id, open_only=True))
+    return TaskDetail(t.id, t.title, t.description, t.status, t.priority, t.due, t.not_before, t.estimated_minutes,
+                      t.due is not None and t.due < now and t.status in projects.OPEN, p.id if p else None,
+                      p.name if p else "Sans projet", step.title if step else None,
+                      _color(project_colors(db), p.id if p else None), t.boost, t.reschedule_count, blocks)
+
+
+@dataclass(frozen=True)
 class TaskGroup:
     name: str
     color: str
@@ -588,6 +621,9 @@ class Views:
         filtre = filtre if filtre in FILTERS else "tout"
         groups, counts = task_groups(self.db, now, filtre)
         return {"groups": groups, "counts": counts, "filtre": filtre, "now": now}
+
+    def task(self, task_id: str) -> TaskDetail | None:
+        return task_detail(self.db, task_id, self.now())
 
     def projects(self) -> list[ProjectCard]:
         return project_cards(self.db, self.now())

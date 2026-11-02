@@ -47,6 +47,7 @@ _ISO_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 AGENDA_VUES = ("jour", "semaine")
 PROJECT_NOT_FOUND = "Projet introuvable."
 NOTE_NOT_FOUND = "Note introuvable."
+TASK_NOT_FOUND = "Tâche introuvable."
 BADGES_TTL = 15.0     # secondes : les pastilles du menu ne sont pas recalculées à chaque page
 HEARTBEAT = 25.0      # secondes : battement du flux /events (les proxys ne coupent pas une connexion muette)
 # clé des pastilles dans la requête (RequestKey typée quand aiohttp la connaît, ≥ 3.12 ; sinon le texte)
@@ -421,6 +422,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     details = {
         "projets": detail("projet", "project", "project", PROJECT_NOT_FOUND),
         "notes": detail("note", "note", "note", NOTE_NOT_FOUND),
+        "taches": detail("tache", "task", "task", TASK_NOT_FOUND),
     }
 
     async def security_headers(request: web.Request, response: web.StreamResponse) -> None:

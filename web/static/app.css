@@ -448,3 +448,15 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}
   .loading::before{animation:none;width:100%;opacity:.7}.dots i,button[aria-busy="true"]::after,.thread .arrive{animation:none}}
+/* tâches : carte teintée à la couleur de sa catégorie (projet), étiquette de catégorie, titre cliquable */
+.taskcard{background:var(--card);background:color-mix(in srgb,var(--c) 14%,var(--card))}
+.rowcard .rtitle a,.ptitle a{color:inherit;text-decoration:none}
+.rowcard .rtitle a:hover,.ptitle a:hover{text-decoration:underline}
+.tag{display:inline-block;align-self:flex-start;margin:0;font-size:12px;line-height:20px;padding:0 10px;border-radius:999px;
+  background:var(--c);color:#14161c;font-weight:700;overflow-wrap:anywhere}
+.tag a{color:inherit;text-decoration:none}
+.tdetail{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.tdetail>*{margin:0}
+.tdetail .card{border-left:4px solid var(--c)}
+.tdetail .notebody{white-space:pre-wrap;overflow-wrap:anywhere}
+.tgroup .row-actions.secondary button{font-size:14px}
