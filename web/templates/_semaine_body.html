@@ -1,6 +1,6 @@
 {# Récap semaine : temps passé par projet sur les 7 derniers jours, tâches terminées, retards et échéances à venir. #}
 {% macro due_list(items, cls) %}<ul class="duelist{% if cls %} {{ cls }}{% endif %}">{% for t in items %}
-  <li><span class="name">{{ t.title }}</span><span class="when">{{ t.due|fr_day_short }} · {{ t.due|hm }}</span></li>{% endfor %}</ul>{% endmacro %}
+  <li><span class="name">{{ t.title }}</span><span class="when">{{ t.due|fr_day }} · {{ t.due|hm }}</span></li>{% endfor %}</ul>{% endmacro %}
 <div class="recap">
   <section class="card recap-time" aria-labelledby="time-h"><h2 id="time-h">Temps passé par projet</h2>
     {% if week.rows %}

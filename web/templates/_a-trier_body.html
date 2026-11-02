@@ -15,7 +15,7 @@
       <h3 class="rtitle">{{ e.title }}</h3>
       <p class="meta">
         <span class="when">{{ e.start|fr_day }}</span>
-        <span class="when">{{ e.start|hm }} – {% if e.end.date() != e.start.date() %}{{ e.end|fr_day_short }} {% endif %}{{ e.end|hm }}</span>
+        <span class="when">{{ e.start|hm }} – {% if e.end.date() != e.start.date() %}{{ e.end|fr_day }} {% endif %}{{ e.end|hm }}</span>
         {% if e.location %}<span><span aria-hidden="true">📍 </span>{{ e.location }}</span>{% endif %}
       </p>
       <div class="row-actions">
@@ -35,7 +35,7 @@
     <li class="rowcard taskcard{% if t.overdue %} overdue{% endif %}" style="--c: {{ t.color }}">
       <h3 class="rtitle">{{ t.title }}</h3>
       <p class="meta">
-        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>
+        {% if t.due %}<span class="due">{% if t.overdue %}En retard · {% endif %}⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>
         {% else %}<span>Sans échéance</span>{% endif %}
         {% if t.minutes %}<span>⏱ {{ t.minutes|dur }}</span>{% endif %}
         {% if t.step %}<span class="step">Étape : {{ t.step }}</span>{% endif %}

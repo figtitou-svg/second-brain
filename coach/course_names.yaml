@@ -21,3 +21,27 @@ PRC: Programmation en C
 # ANG-3:
 # ESP:
 # SPE:
+
+# Catégories des tâches (préfixe du titre, ex. « [Esp] Fiche 3 ») -> nom affiché sur le site. Sans distinction de
+# majuscules ; chaque nom est donné avec sa forme courte et sa forme longue pour couvrir les deux écritures.
+Prog: Programmation
+Programmation: Programmation
+Don: Données
+Données: Données
+Algo: Algorithmique
+Algorithmique: Algorithmique
+Cyber: Cyber
+Job: Job
+Ang: Anglais
+Anglais: Anglais
+Esp: Espagnol
+Espagnol: Espagnol
+Fra: Franck
+Franck: Franck
+Cha: Chaps
+Chaps: Chaps
+BDE: BDE
+Per: Perso
+Perso: Perso
+Div: Divers
+Divers: Divers

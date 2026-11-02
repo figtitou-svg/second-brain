@@ -2,6 +2,7 @@
 """Données structurées de la page web (lecture seule) : accueil « coup d'œil »."""
 from __future__ import annotations
 
+import colorsys
 import hashlib
 import logging
 import threading
@@ -11,7 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
-from coach import fmt
+from coach import courses, fmt
 from coach import project_service, project_watch, projects
 from coach.db import Database
 from coach.models import Suggestion, Task
@@ -36,6 +37,27 @@ def project_colors(db: Database) -> dict[str, str]:
     les 8 premiers et inchangée quand un autre projet est terminé ; au-delà, la palette recommence."""
     ranked = sorted(db.list_projects(), key=lambda p: (p.created_at, p.id))
     return {p.id: PALETTE[i % len(PALETTE)] for i, p in enumerate(ranked)}
+
+
+def category_color(code: str) -> str:
+    """Couleur propre à une catégorie de tâche (le préfixe `[Esp]` du titre) : teinte stable tirée du code, la
+    même partout et d'une session à l'autre (« Esp » et « esp » ont la même)."""
+    hue = int(hashlib.sha1(projects.fold(code).encode()).hexdigest(), 16) % 360
+    r, g, b = colorsys.hls_to_rgb(hue / 360, 0.66, 0.62)
+    return f"#{round(r * 255):02X}{round(g * 255):02X}{round(b * 255):02X}"
+
+
+def split_category(title: str) -> tuple[str | None, str]:
+    """(catégorie, titre sans le préfixe) : « [Esp] Fiche 3 » -> ("Esp", "Fiche 3") ; sans préfixe, (None, titre)."""
+    m = coach_focus.SUBJECT_RE.match(title)
+    rest = title[m.end():].strip() if m else ""
+    return (m.group(1).strip(), rest) if m and m.group(1).strip() and rest else (None, title)
+
+
+def category_label(code: str) -> str:
+    """Nom complet de la catégorie quand course_names.yaml le donne, sinon le code tel quel (jamais deviné)."""
+    names = {k.casefold(): v for k, v in courses.course_names().items()}
+    return names.get(code.strip().casefold(), code)
 
 
 def _color(colors: dict[str, str], project_id: str | None) -> str:
@@ -397,6 +419,51 @@ class TaskRow:
     minutes: int
     step: str | None
     color: str
+    category: str | None = None   # préfixe `[Esp]` du titre : donne sa couleur et son étiquette à la tâche
+    name: str = ""                # titre sans ce préfixe
+
+
+def task_row(t: Task, now: datetime, step: str | None, project_color: str) -> TaskRow:
+    cat, name = split_category(t.title)
+    return TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes, step,
+                   category_color(cat) if cat else project_color, category_label(cat) if cat else None, name)
+
+
+@dataclass(frozen=True)
+class TaskDetail:
+    task_id: str
+    title: str
+    description: str | None
+    status: str
+    priority: str
+    due: datetime | None
+    not_before: datetime | None
+    minutes: int
+    overdue: bool
+    project_id: str | None
+    project: str
+    step: str | None
+    color: str
+    boost: int
+    reschedule_count: int
+    blocks: list[tuple[datetime, datetime]]
+    category: str | None = None   # nom (ou code) de la catégorie, préfixe `[Esp]` du titre
+    name: str = ""
+
+
+def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetail | None:
+    t = db.get_task(task_id)
+    if t is None:
+        return None
+    p = db.get_project(t.project_id) if t.project_id else None
+    step = db.get_milestone(t.milestone_id) if t.milestone_id else None
+    blocks = sorted((b.start, b.end) for b in db.list_blocks(t.id, open_only=True))
+    cat, name = split_category(t.title)
+    color = category_color(cat) if cat else _color(project_colors(db), p.id if p else None)
+    return TaskDetail(t.id, t.title, t.description, t.status, t.priority, t.due, t.not_before, t.estimated_minutes,
+                      t.due is not None and t.due < now and t.status in projects.OPEN, p.id if p else None,
+                      p.name if p else "Sans projet", step.title if step else None,
+                      color, t.boost, t.reschedule_count, blocks, category_label(cat) if cat else None, name)
 
 
 @dataclass(frozen=True)
@@ -405,9 +472,31 @@ class TaskGroup:
     color: str
     project_id: str | None
     rows: list[TaskRow]
+    key: str = ""      # clé stable du groupe (état ouvert/replié gardé au rechargement)
 
 
-def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list[TaskGroup], dict[str, int]]:
+TRIS = ("projet", "categorie", "date")
+
+
+def regroup(groups: list[TaskGroup], tri: str, now: datetime) -> list[TaskGroup]:
+    """Réorganise les groupes par projet : par catégorie (préfixe `[Esp]`, « Sans catégorie » en dernier) ou en une
+    seule liste par échéance. Mêmes tâches, autre présentation."""
+    rows = [r for g in groups for r in g.rows]
+    by_due = lambda r: (r.due is None, r.due or now, r.title)  # noqa: E731
+    if tri == "date":
+        return [TaskGroup("Par échéance", NO_PROJECT, None, sorted(rows, key=by_due), "date")] if rows else []
+    cats: dict[str, list[TaskRow]] = {}
+    for r in rows:
+        cat, _ = split_category(r.title)
+        cats.setdefault(projects.fold(cat) if cat else "", []).append(r)
+    out = []
+    for k in sorted(cats, key=lambda k: (k == "", k)):
+        mine = sorted(cats[k], key=by_due)
+        out.append(TaskGroup(mine[0].category or "Sans catégorie", mine[0].color if k else NO_PROJECT, None, mine, f"cat:{k or 'aucune'}"))
+    return out
+
+
+def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "projet") -> tuple[list[TaskGroup], dict[str, int]]:
     """Tâches ouvertes regroupées par projet (puis « Sans projet »), et le nombre de tâches pour chaque filtre."""
     filtre = filtre if filtre in FILTERS else "tout"
     colors = project_colors(db)
@@ -431,12 +520,11 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout") -> tuple[list
                 and ((p is not None and t.project_id == p.id) or (p is None and t.project_id not in names))]
         if not mine:
             continue
-        rows = [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
-                        steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+        rows = [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
                 for t in sorted(mine, key=lambda t: (t.due is None, t.due or now, t.title))]
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
-                                p.id if p else None, rows))
-    return groups, counts
+                                p.id if p else None, rows, p.id if p else "sans-projet"))
+    return (groups if tri not in TRIS or tri == "projet" else regroup(groups, tri, now)), counts
 
 
 # --- étape 2 : Projets -----------------------------------------------------------------------------------
@@ -583,11 +671,15 @@ class Views:
     def focus(self) -> list[FocusRow]:
         return focus_rows(self.sched, self.now())
 
-    def tasks(self, filtre: str) -> dict:
+    def tasks(self, filtre: str, tri: str = "projet") -> dict:
         now = self.now()
         filtre = filtre if filtre in FILTERS else "tout"
-        groups, counts = task_groups(self.db, now, filtre)
-        return {"groups": groups, "counts": counts, "filtre": filtre, "now": now}
+        tri = tri if tri in TRIS else "projet"
+        groups, counts = task_groups(self.db, now, filtre, tri)
+        return {"groups": groups, "counts": counts, "filtre": filtre, "tri": tri, "now": now}
+
+    def task(self, task_id: str) -> TaskDetail | None:
+        return task_detail(self.db, task_id, self.now())
 
     def projects(self) -> list[ProjectCard]:
         return project_cards(self.db, self.now())
@@ -783,8 +875,7 @@ def unplanned_tasks(db: Database, now: datetime) -> list[TaskRow]:
     todo = [t for t in db.list_tasks("pending") if t.id not in placed]
     colors = project_colors(db)
     steps = {m.id: m.title for p in db.list_projects() for m in db.list_milestones(p.id)}
-    return [TaskRow(t.id, t.title, t.status, t.due, t.due is not None and t.due < now, t.estimated_minutes,
-                    steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
+    return [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
             for t in sorted(todo, key=lambda t: (t.due is None, t.due or now, t.title))]
 
 

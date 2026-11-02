@@ -14,7 +14,7 @@
     <div class="gbar" role="img" aria-label="Score {{ r.score }}, {{ r.bar }} % du premier"><i style="width: {{ r.bar }}%"></i></div>
     {% if r.reason %}<p class="reason">{{ r.reason }}</p>{% endif %}
     <p class="meta">
-      {% if r.due %}<span class="due">⚑ {{ r.due|fr_day_short }} {{ r.due|hm }}</span>{% else %}<span class="muted">Sans échéance</span>{% endif %}
+      {% if r.due %}<span class="due">⚑ {{ r.due|fr_day }} {{ r.due|hm }}</span>{% else %}<span class="muted">Sans échéance</span>{% endif %}
       {% if r.minutes %}<span class="muted">⏱ {{ r.minutes|dur }}</span>{% endif %}
     </p>
     <div class="row-actions">

@@ -4,15 +4,15 @@
 {% set p = project %}
 {% macro task_row(t) %}
 <li class="ptask">
-  <p class="ptitle">{{ t.title }}</p>
+  <p class="ptitle"><a href="/taches/{{ t.id }}">{{ t.title }}</a></p>
   {% if t.due or t.estimated_minutes %}<p class="meta">
-    {% if t.due %}<span>⚑ {{ t.due|fr_day_short }} {{ t.due|hm }}</span>{% endif %}
+    {% if t.due %}<span>⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% endif %}
     <span>⏱ {{ t.estimated_minutes|dur }}</span>
     {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}</p>{% endif %}
   <div class="row-actions">
     <button type="button" class="primary" data-cb="td:{{ t.id }}" aria-label="Fait : {{ t.title }}">✅ Fait</button>
     <button type="button" data-cb="tpo:{{ t.id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
-    <button type="button" data-cb="tnw:{{ t.id }}" aria-label="Semaine pro. : {{ t.title }}">📅 Semaine pro.</button>
+    <button type="button" data-cb="tnw:{{ t.id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine prochaine</button>
   </div>
 </li>
 {% endmacro %}
@@ -74,7 +74,7 @@
         <h3 class="stitle">{{ s.title }}
           <span class="sr-only">({% if state == "done" %}faite{% elif state == "current" %}en cours{% else %}à venir{% endif %})</span></h3>
         <p class="meta">
-          {% if s.due %}<span>⚑ {{ s.due|fr_day_short }}</span>{% endif %}
+          {% if s.due %}<span>⚑ {{ s.due|fr_day }}</span>{% endif %}
           {% if s.total %}<span>{{ s.done }}/{{ s.total }} tâche{{ "s" if s.total > 1 }}</span>{% else %}<span>Aucune tâche</span>{% endif %}</p>
         {% if s.total %}<div class="gbar" aria-hidden="true"><i style="width: {{ (s.done * 100 // s.total) }}%"></i></div>{% endif %}
         {% if s.tasks %}<ul class="plist">{% for t in s.tasks %}{{ task_row(t) }}{% endfor %}</ul>{% endif %}

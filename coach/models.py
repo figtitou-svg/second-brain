@@ -40,6 +40,7 @@ class Task(BaseModel):
     status: TaskStatus = "pending"
     source_id: str | None = None
     reschedule_count: int = Field(default=0, ge=0)
+    description: str | None = None  # détail libre (contexte, consignes) : affiché sur la page de la tâche
 
 
 class Event(BaseModel):
