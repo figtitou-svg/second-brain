@@ -56,7 +56,8 @@ def split_category(title: str) -> tuple[str | None, str]:
 
 def category_label(code: str) -> str:
     """Nom complet de la catégorie quand course_names.yaml le donne, sinon le code tel quel (jamais deviné)."""
-    return courses.course_names().get(code.upper(), courses.course_names().get(code, code))
+    names = {k.casefold(): v for k, v in courses.course_names().items()}
+    return names.get(code.strip().casefold(), code)
 
 
 def _color(colors: dict[str, str], project_id: str | None) -> str:
