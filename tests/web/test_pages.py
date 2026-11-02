@@ -145,8 +145,9 @@ def test_tasks_page_buttons_use_existing_callbacks():
     async def scenario(c):
         await login(c)
         text = await (await c.get("/taches")).text()
+        detail = await (await c.get(f"/taches/{t.id}")).text()
         for cb in (f"td:{t.id}", f"plan:{t.id}", f"dur:{t.id}", f"tpo:{t.id}", f"tnw:{t.id}", f"ign:{t.id}"):
-            assert f'data-cb="{cb}"' in text, cb
+            assert f'data-cb="{cb}"' in detail and f'data-cb="{cb}"' not in text, cb
         assert 'href="/taches?filtre=retard"' in text
         retard = await (await c.get("/taches?filtre=retard")).text()
         assert "Envoyer le devis" not in retard and 'data-refresh="/fragment/taches?filtre=retard"' in retard
@@ -535,7 +536,6 @@ def test_tasks_groups_have_stable_keys_for_fold_state():
         await login(c)
         text = await (await c.get("/taches")).text()
         assert f'data-gkey="{p.id}"' in text and 'data-gkey="sans-projet"' in text
-        assert 'aria-label="Semaine prochaine : Avec projet">📅 Semaine prochaine</button>' in text
     run(app, scenario)
 
 
@@ -612,7 +612,7 @@ def test_cache_control_static_revalidates_and_pages_are_not_stored():
     run(app, scenario)
 
 
-def test_task_rows_fold_secondary_actions_into_more():
+def test_task_rows_have_no_buttons_and_open_the_task_page():
     app, db = make()
     t = Task(title="Envoyer le devis", due=NOW + timedelta(days=2))
     db.upsert_task(t)
@@ -621,13 +621,8 @@ def test_task_rows_fold_secondary_actions_into_more():
         await login(c)
         text = await (await c.get("/taches")).text()
         row = text.split('<li class="rowcard taskcard')[1].split("</li>")[0]
-        visible, more = row.split('<details class="more"')
-        assert f'data-cb="td:{t.id}"' in visible and f'data-cb="plan:{t.id}"' in visible
-        assert f'data-gkey="t:{t.id}"' in more and "<summary>Plus" in more
-        for cb in ("dur", "tpo", "tnw", "ign"):
-            assert f'data-cb="{cb}:{t.id}"' in more and f'data-cb="{cb}:' not in visible, cb
-        assert 'aria-label="Semaine prochaine : Envoyer le devis">📅 Semaine prochaine</button>' in more
-        assert "<details class=\"more\" open" not in text                        # replié par défaut
+        assert "<button" not in row and 'class="more"' not in row and "data-cb=" not in row
+        assert f'<a href="/taches/{t.id}">Envoyer le devis</a>' in row
     run(app, scenario)
 
 
@@ -691,12 +686,12 @@ def test_refreshed_fragments_keep_the_focus_anchors_of_the_page():
             assert re.search(r"<main[^>]*>\s*(<p[^>]*>.*?</p>\s*)?<h1>", page, re.S), url
             cbs = re.findall(r'data-cb="([^"]+)"', frag)
             section = page.split(f'<section id="{sid}"')[1]
-            assert cbs and cbs == re.findall(r'data-cb="([^"]+)"', section), url    # mêmes boutons, même ordre
+            assert (cbs or sid == "taches") and cbs == re.findall(r'data-cb="([^"]+)"', section), url    # mêmes boutons, même ordre
             assert len(set(cbs)) == len(cbs), url                       # chaque data-cb désigne un seul bouton
             assert re.findall(r'data-gkey="([^"]+)"', frag) == re.findall(r'data-gkey="([^"]+)"', section), url
         taches = await (await c.get("/fragment/taches")).text()
         keys = re.findall(r'data-gkey="([^"]+)"', taches)
-        assert "sans-projet" in keys and p.id in keys and sum(k.startswith("t:") for k in keys) == 3
+        assert "sans-projet" in keys and p.id in keys and not any(k.startswith("t:") for k in keys)
     run(app, scenario)
 
 
@@ -751,7 +746,7 @@ def test_tasks_sort_menu_by_category_and_date():
         assert t.index(">Espagnol<") < t.index(">Perso<") < t.index("Sans catégorie")
         assert 'data-refresh="/fragment/taches?filtre=tout&amp;tri=categorie"' in t and "tri=categorie" in t.split("chips")[1]
         d = await (await c.get("/fragment/taches?tri=date")).text()
-        assert d.count('class="tgroup"') == 1 and d.index("[Per] B") < d.index("[Esp] A") < d.index(">C<")
+        assert d.count('class="tgroup"') == 1 and d.index(">B</a>") < d.index(">A</a>") < d.index(">C</a>")
         x = await (await c.get("/taches?tri=%3Cx%3E")).text()
         assert 'data-refresh="/fragment/taches?filtre=tout"' in x and "<x>" not in x
     run(app, scenario)

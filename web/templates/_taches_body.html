@@ -27,20 +27,6 @@
         {% if t.step %}<span class="muted step">Étape : {{ t.step }}</span>{% endif %}
         {% if t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}
       </p>
-      <div class="row-actions">
-        <button type="button" class="primary" data-cb="td:{{ t.task_id }}" aria-label="Fait : {{ t.title }}">✅ Fait</button>
-        <button type="button" data-cb="plan:{{ t.task_id }}" aria-label="Planifier : {{ t.title }}">Planifier</button>
-      </div>
-      {# actions secondaires repliées (sans JS) ; data-gkey : état ouvert gardé au rechargement #}
-      <details class="more" data-gkey="t:{{ t.task_id }}">
-        <summary>Plus<span class="sr-only"> : {{ t.title }}</span></summary>
-        <div class="row-actions secondary">
-          <button type="button" data-cb="dur:{{ t.task_id }}" aria-label="Durée : {{ t.title }}">⏱ Durée</button>
-          <button type="button" data-cb="tpo:{{ t.task_id }}" aria-label="Demain : {{ t.title }}">⏭ Demain</button>
-          <button type="button" data-cb="tnw:{{ t.task_id }}" aria-label="Semaine prochaine : {{ t.title }}">📅 Semaine prochaine</button>
-          <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Ignorer : {{ t.title }}">🗑 Ignorer</button>
-        </div>
-      </details>
     </li>
     {% endfor %}
   </ul>
