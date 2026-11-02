@@ -734,8 +734,8 @@ def test_task_category_prefix_gives_color_and_tag():
         text = await (await c.get("/taches")).text()
         assert f'style="--c: {category_color("Esp")}"' in text.split(f'href="/taches/{a.id}"')[0].rsplit("<li", 1)[1]
         ra = text.split(f'href="/taches/{a.id}"')[1].split("</li>")[0]
-        assert ">Fiche 3</a>" in ra and '<p class="tag">Esp</p>' in ra
-        assert '<p class="tag">Per</p>' in text.split(f'href="/taches/{b.id}"')[1]
+        assert ">Fiche 3</a>" in ra and '<p class="tag">Espagnol</p>' in ra
+        assert '<p class="tag">Perso</p>' in text.split(f'href="/taches/{b.id}"')[1]
     run(app, scenario)
 
 
@@ -748,7 +748,7 @@ def test_tasks_sort_menu_by_category_and_date():
     async def scenario(c):
         await login(c)
         t = await (await c.get("/taches?tri=categorie")).text()
-        assert t.index(">Esp<") < t.index(">Per<") < t.index("Sans catégorie")
+        assert t.index(">Espagnol<") < t.index(">Perso<") < t.index("Sans catégorie")
         assert 'data-refresh="/fragment/taches?filtre=tout&amp;tri=categorie"' in t and "tri=categorie" in t.split("chips")[1]
         d = await (await c.get("/fragment/taches?tri=date")).text()
         assert d.count('class="tgroup"') == 1 and d.index("[Per] B") < d.index("[Esp] A") < d.index(">C<")
