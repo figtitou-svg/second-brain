@@ -46,6 +46,31 @@ def safe_html(text: str) -> str:
     return "".join(out).replace("\n", "<br>")
 
 
+_URL = re.compile(r"https?://[^\s<>\"']+")
+_NOTION = re.compile(r"^https://(?:app\.notion\.com|(?:www\.)?notion\.so)/(?:[^?#]*[/-])?([0-9a-f]{32})(?:[?#]|$)")
+
+
+def linkify(text: str) -> str:
+    """Texte brut -> HTML sûr où les adresses http(s) sont cliquables (les retours à la ligne restent des `\n` :
+    la mise en page est celle de `white-space: pre-wrap`).
+    Une page Notion s'ouvre dans l'appli (`notion://`), avec un lien navigateur à côté si l'appli est absente."""
+    out, pos = [], 0
+    for m in _URL.finditer(text):
+        url = m.group(0).rstrip(".,;:!?)")          # ponctuation de phrase collée à l'adresse
+        end = m.start() + len(url)
+        out.append(html.escape(text[pos:m.start()]))
+        pos = end
+        href = html.escape(url, quote=True)
+        notion = _NOTION.match(url)
+        if notion:
+            out.append(f'<a class="applink" href="notion://www.notion.so/{notion.group(1)}">Ouvrir dans Notion</a> '
+                       f'<a class="muted" href="{href}" target="_blank" rel="noopener noreferrer">(navigateur)</a>')
+        else:
+            out.append(f'<a href="{href}" target="_blank" rel="noopener noreferrer">{href}</a>')
+    out.append(html.escape(text[pos:]))
+    return "".join(out)
+
+
 # commande -> méthode de BotService, exactement comme les gestionnaires Telegram
 _NO_ARG = {"today": "today", "tasks": "tasks", "replan": "replan", "focus": "focus", "projet": "projet",
            "projets": "projets", "annuler": "annuler", "semaine": "week", "quota": "quota", "help": "help",

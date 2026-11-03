@@ -699,7 +699,8 @@ def test_task_detail_page_shows_description_and_category_color():
     app, db = make()
     p = Project(name="Projet IA", last_activity=NOW)
     db.save_project(p)
-    t = Task(title="Envoyer le devis", project_id=p.id, description="Joindre <b>le PDF</b>\nà Marie")
+    t = Task(title="Envoyer le devis", project_id=p.id,
+             description="Joindre <b>le PDF</b>\nà Marie\nFiche : https://app.notion.com/p/40cfe4a35bc781a2b078fa9d38fe7e59")
     db.upsert_task(t)
 
     async def scenario(c):
@@ -709,6 +710,7 @@ def test_task_detail_page_shows_description_and_category_color():
         r = await c.get(f"/taches/{t.id}")
         page = await r.text()
         assert r.status == 200 and "Joindre &lt;b&gt;le PDF&lt;/b&gt;" in page and "<b>le PDF</b>" not in page
+        assert 'href="notion://www.notion.so/40cfe4a35bc781a2b078fa9d38fe7e59"' in page and "Ouvrir dans Notion" in page
         assert "Projet IA" in page and "Durée estimée" in page and f'data-cb="td:{t.id}"' in page
         assert r.status == 200 and (await c.get(f"/fragment/taches/{t.id}")).status == 200
         r = await c.get("/taches/inconnu")

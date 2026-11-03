@@ -139,7 +139,8 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
                badge_clock: Callable[[], float] = time.monotonic) -> web.Application:
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True)
     env.filters["tg"] = lambda text: Markup(actions.safe_html(text))   # HTML Telegram filtré par safe_html
-    env.globals["timedelta"] = timedelta                                 # navigation jour / semaine de l'Agenda
+    env.filters["linkify"] = lambda text: Markup(actions.linkify(text))  # adresses cliquables (Notion : ouvre l'appli)
+    env.globals["timedelta"] = timedelta                                # navigation jour / semaine de l'Agenda
     env.filters["fr_day"] = fmt.day_long                                 # « mardi 27 octobre »
     env.filters["fr_day_short"] = fmt.day_short                          # « mar. 27 oct. »
     env.filters["dur"] = fmt.dur                                         # « 2 h 30 »

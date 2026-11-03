@@ -12,7 +12,7 @@
   </p>
   <section class="card" aria-labelledby="desc-h">
     <h2 id="desc-h">Description</h2>
-    {% if t.description %}<p class="notebody">{{ t.description }}</p>{% else %}<p class="muted">Aucune description.</p>{% endif %}
+    {% if t.description %}<p class="notebody">{{ t.description|linkify }}</p>{% else %}<p class="muted">Aucune description.</p>{% endif %}
   </section>
   <section class="card" aria-labelledby="info-h">
     <h2 id="info-h">Informations</h2>

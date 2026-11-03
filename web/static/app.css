@@ -462,6 +462,7 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .tdetail>*{margin:0}
 .tdetail .card{border-left:4px solid var(--c)}
 .tdetail .notebody{white-space:pre-wrap;overflow-wrap:anywhere}
+.applink{display:inline-block;padding:6px 0;font-weight:600}
 .tgroup .row-actions.secondary button{font-size:14px}
 /* tri des tâches : discret, replié par défaut */
 .sortmenu{margin-top:6px;font-size:13px}

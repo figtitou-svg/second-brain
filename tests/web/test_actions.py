@@ -43,6 +43,25 @@ def test_safe_html_balanced_input_is_unchanged():
     assert actions.safe_html(text) == text
 
 
+def test_linkify_opens_notion_pages_in_the_app_with_a_browser_fallback():
+    page = "40cfe4a35bc781a2b078fa9d38fe7e59"
+    for url in (f"https://app.notion.com/p/{page}", f"https://www.notion.so/Titre-de-page-{page}?pvs=4",
+                f"https://notion.so/{page}"):
+        out = actions.linkify(f"Fiche : {url}.")
+        assert f'href="notion://www.notion.so/{page}"' in out and ">Ouvrir dans Notion</a>" in out
+        assert f'href="{url}" target="_blank" rel="noopener noreferrer">(navigateur)</a>' in out
+        assert out.endswith("</a>.") or out.endswith(">(navigateur)</a>.")   # le point final reste hors du lien
+
+
+def test_linkify_other_links_and_escaping():
+    out = actions.linkify('Lire https://example.org/a?b=1&c=2, puis <b>x</b>\nfin')
+    assert 'href="https://example.org/a?b=1&amp;c=2"' in out and "</a>, puis" in out
+    assert "&lt;b&gt;x&lt;/b&gt;\nfin" in out
+    assert actions.linkify("javascript:alert(1) et ftp://x.org") == "javascript:alert(1) et ftp://x.org"
+    assert 'notion://' not in actions.linkify("https://evil.example/p/" + "a" * 32)
+    assert actions.linkify('"><script>') == "&quot;&gt;&lt;script&gt;"
+
+
 def test_commands_map_to_the_same_methods_as_telegram(monkeypatch):
     s, _ = svc()
     called = []
