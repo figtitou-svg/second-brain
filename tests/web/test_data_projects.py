@@ -89,3 +89,17 @@ def test_project_detail_states():
     done = Project(name="Terminé", status="done")
     db.save_project(done)
     assert data.project_detail(db, done.id, NOW).actions == []
+
+
+def test_percent_counts_done_tasks_even_when_no_step_is_crossed():
+    db = Database(":memory:")
+    p = Project(name="Cyber")
+    db.save_project(p)
+    ms = [Milestone(project_id=p.id, title=f"É{i}", position=i, status="open") for i in range(4)]
+    for m in ms:
+        db.save_milestone(m)
+    for i in range(4):
+        db.upsert_task(Task(title=f"[Cyber] {i}", project_id=p.id, milestone_id=ms[i % 4].id,
+                            status="done" if i == 3 else "pending"))
+    (card,) = data.project_cards(db, NOW)
+    assert card.percent == 25

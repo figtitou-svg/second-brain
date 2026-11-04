@@ -221,10 +221,7 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
     for p in db.list_projects("active"):
         ms, ptasks = db.list_milestones(p.id), db.list_project_tasks(p.id)
         prog = projects.progress(p, ms, ptasks, now)
-        if prog.total_milestones:
-            pct = prog.done_milestones * 100 // prog.total_milestones
-        else:
-            pct = prog.tasks_done * 100 // prog.tasks_total if prog.tasks_total else 0
+        pct = _percent(prog)
         stall = project_watch.assess(p, ms, ptasks, now)
         rings.append(Ring(p.id, p.name, _color(colors, p.id), pct, prog.days_left, stall is not None,
                           stall.signals[0].line if stall else None))
@@ -545,9 +542,11 @@ class ProjectCard:
 
 
 def _percent(prog) -> int:
-    if prog.total_milestones:
-        return prog.done_milestones * 100 // prog.total_milestones
-    return prog.tasks_done * 100 // prog.tasks_total if prog.tasks_total else 0
+    """Avancement = la mesure la plus avancée entre étapes franchies et tâches faites : un projet dont les étapes
+    ne sont pas encore franchies (ex. Cyber, étapes en parallèle) montre quand même les tâches terminées."""
+    by_steps = prog.done_milestones * 100 // prog.total_milestones if prog.total_milestones else 0
+    by_tasks = prog.tasks_done * 100 // prog.tasks_total if prog.tasks_total else 0
+    return max(by_steps, by_tasks)
 
 
 def project_cards(db: Database, now: datetime) -> list[ProjectCard]:
