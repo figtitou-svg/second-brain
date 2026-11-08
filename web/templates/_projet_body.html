@@ -3,7 +3,7 @@
    barre d'actions. Couleur (--c) interne ; titres, noms, fiche et suggestions échappés. #}
 {% set p = project %}
 {% macro task_row(t) %}
-<li class="ptask">
+<li class="ptask" data-swipe data-swipe-done="td:{{ t.id }}" data-swipe-drop="ign:{{ t.id }}">
   <p class="ptitle"><a href="/taches/{{ t.id }}">{{ t.title }}</a></p>
   {% if t.due or t.estimated_minutes %}<p class="meta">
     {% if t.due %}<span>⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% endif %}

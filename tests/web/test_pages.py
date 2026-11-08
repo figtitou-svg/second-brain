@@ -748,7 +748,9 @@ def test_tasks_sort_menu_by_category_and_date():
         assert t.index(">Espagnol<") < t.index(">Perso<") < t.index("Sans catégorie")
         assert 'data-refresh="/fragment/taches?filtre=tout&amp;tri=categorie"' in t and "tri=categorie" in t.split("chips")[1]
         d = await (await c.get("/fragment/taches?tri=date")).text()
-        assert d.count('class="tgroup"') == 1 and d.index(">B</a>") < d.index(">A</a>") < d.index(">C</a>")
+        assert d.count('class="tgroup"') == 1 and ' open' not in d.split('class="tgroup"')[1].split('>')[0]
+        assert d.count("data-swipe-done=") == 3 and d.count('data-swipe-drop="ign:') == 3
+        assert d.index(">B</a>") < d.index(">A</a>") < d.index(">C</a>")
         x = await (await c.get("/taches?tri=%3Cx%3E")).text()
         assert 'data-refresh="/fragment/taches?filtre=tout"' in x and "<x>" not in x
     run(app, scenario)

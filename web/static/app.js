@@ -142,8 +142,28 @@
   // une section n'est pas remplacée pendant qu'on s'en sert : focus clavier dedans ou clic en attente ;
   // force (après une action de l'utilisateur) ignore seulement le focus, resté sur le bouton cliqué
   function inUse(el, force) {
-    return (!force && el.contains(document.activeElement)) || el.querySelector("[data-cb]:disabled") !== null;
+    return (!force && el.contains(document.activeElement)) || el.querySelector("[data-cb]:disabled, .swiping") !== null;
   }
+
+  // Groupes de projet (details.tgroup) : ouverts ou repliés, le choix est retenu sur l'appareil. On le retrouve en
+  // revenant sur la page (après avoir terminé une tâche, par exemple), pas seulement au rechargement de la section.
+  const FOLD = "fold:";
+  function storedFold(key) {
+    try { const v = localStorage.getItem(FOLD + key); return v === null ? null : v === "1"; } catch (e) { return null; }
+  }
+  function restoreFolds(root) {
+    for (const d of root.querySelectorAll("details.tgroup[data-gkey]")) {
+      const v = storedFold(d.dataset.gkey);
+      if (v !== null && d.open !== v) d.open = v;
+    }
+  }
+  // l'événement toggle ne remonte pas : écoute en capture
+  document.addEventListener("toggle", (ev) => {
+    const d = ev.target;
+    if (!(d instanceof HTMLDetailsElement) || !d.matches("details.tgroup[data-gkey]")) return;
+    try { localStorage.setItem(FOLD + d.dataset.gkey, d.open ? "1" : "0"); } catch (e) { /* retenu pour cette page seulement */ }
+  }, true);
+  restoreFolds(document);
 
   // les <details data-gkey> (groupes de projet, « Plus » d'une tâche) gardent leur état ouvert ou replié
   // d'un rechargement à l'autre ; ceux qui apparaissent prennent l'état écrit dans le gabarit
@@ -151,6 +171,7 @@
     const state = new Map();
     for (const d of el.querySelectorAll("details[data-gkey]")) state.set(d.dataset.gkey, d.open);
     el.innerHTML = html;
+    restoreFolds(el);
     if (!state.size) return;
     for (const d of el.querySelectorAll("details[data-gkey]")) {
       if (state.has(d.dataset.gkey)) d.open = state.get(d.dataset.gkey);
@@ -339,6 +360,83 @@
       say(sy.dataset.say, document.querySelector("#thread") ? "#thread" : null);
     }
   });
+
+  // --- glisser une tâche sur le côté, comme dans une messagerie ------------------------------------------------
+  // → à droite : « Fait » ; ← à gauche : « Supprimer » (ignorer). Rien ne se passe tant qu'on n'est pas allé jusqu'au
+  // bout (SWIPE_FULL de la largeur) ET qu'on a relâché : le fond coloré s'intensifie, puis « Relâche pour valider »
+  // apparaît ; relâcher avant, revenir en arrière ou Échap annule, la carte revient à sa place.
+  const SWIPE_FULL = 0.7;
+  let swipe = null, swipeClick = 0;
+  function swipeReset(s) {
+    s.li.removeAttribute("aria-busy");
+    s.li.style.transform = "";
+    s.li.style.opacity = "";
+    s.bg.remove();
+    setTimeout(() => { s.li.style.transition = ""; s.li.classList.remove("swipe-live"); }, 200);
+  }
+  function swipeEnd(commit) {
+    const s = swipe;
+    if (!s) return;
+    swipe = null;
+    s.li.classList.remove("swiping");
+    const data = s.dx > 0 ? s.li.dataset.swipeDone : s.li.dataset.swipeDrop;
+    s.li.style.transition = "transform .18s ease, opacity .18s ease";
+    if (!(commit && s.armed) || !data) { swipeReset(s); return; }
+    s.li.style.transform = `translateX(${s.dx > 0 ? "" : "-"}110%)`;
+    s.li.style.opacity = "0";
+    s.li.setAttribute("aria-busy", "true");
+    (async () => {
+      const html = await post("/click", {data});
+      if (html === null) { swipeReset(s); return; }       // échec : la carte revient, rien n'a été enregistré
+      show(html, false, undefined, true);
+      await refresh(true);
+      s.bg.remove();
+    })();
+  }
+  document.addEventListener("pointerdown", (ev) => {
+    const li = ev.target.closest?.("[data-swipe]");
+    if (!li || swipe || (ev.pointerType === "mouse" && ev.button !== 0) || ev.target.closest("button, input, select, textarea")) return;
+    swipe = {li, id: ev.pointerId, x: ev.clientX, y: ev.clientY, dx: 0, on: false, armed: false, bg: null, w: li.offsetWidth};
+  });
+  document.addEventListener("pointermove", (ev) => {
+    const s = swipe;
+    if (!s || ev.pointerId !== s.id) return;
+    const dx = ev.clientX - s.x, dy = ev.clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }   // c'est un défilement
+      if (Math.abs(dx) < 10) return;
+      s.on = true;
+      try { s.li.setPointerCapture(ev.pointerId); } catch (e) { /* ignoré */ }
+      const bg = s.bg = document.createElement("div");
+      bg.className = "swipe-bg";
+      bg.setAttribute("aria-hidden", "true");
+      bg.innerHTML = '<span class="sw-l"></span><span class="sw-r"></span>';
+      const host = s.li.parentElement;
+      if (getComputedStyle(host).position === "static") host.style.position = "relative";
+      Object.assign(bg.style, {top: s.li.offsetTop + "px", left: s.li.offsetLeft + "px", width: s.li.offsetWidth + "px",
+                               height: s.li.offsetHeight + "px", borderRadius: getComputedStyle(s.li).borderRadius});
+      host.insertBefore(bg, s.li);
+      s.li.classList.add("swiping", "swipe-live");
+      s.li.style.transition = "none";
+      swipeClick = Date.now() + 400;
+    }
+    s.dx = Math.max(-s.w, Math.min(s.w, dx));
+    const p = Math.min(Math.abs(s.dx) / (s.w * SWIPE_FULL), 1);
+    s.armed = p >= 1;
+    s.li.style.transform = `translateX(${s.dx}px)`;
+    const done = s.dx > 0;
+    s.bg.className = `swipe-bg ${done ? "swipe-done" : "swipe-drop"}${s.armed ? " armed" : ""}`;
+    s.bg.style.setProperty("--p", p.toFixed(3));
+    s.bg.firstChild.textContent = done ? (s.armed ? "✅ Relâche pour terminer" : "✅ Fait") : "";
+    s.bg.lastChild.textContent = done ? "" : (s.armed ? "Relâche pour supprimer 🗑" : "Supprimer 🗑");
+    ev.preventDefault();
+  });
+  document.addEventListener("pointerup", (ev) => { if (swipe && ev.pointerId === swipe.id) swipeEnd(true); });
+  document.addEventListener("pointercancel", (ev) => { if (swipe && ev.pointerId === swipe.id) swipeEnd(false); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && swipe?.on) swipeEnd(false); });
+  document.addEventListener("click", (ev) => {      // un glissement ne doit pas ouvrir la tâche
+    if (Date.now() < swipeClick) { ev.preventDefault(); ev.stopPropagation(); swipeClick = 0; }
+  }, true);
 
   document.addEventListener("submit", async (ev) => {
     const form = ev.target;

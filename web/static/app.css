@@ -478,3 +478,17 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .taskcard:hover{filter:brightness(1.08)}
 .taskcard .rtitle a:focus-visible{outline:none}
 .taskcard:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+
+/* glisser une tâche : fond coloré derrière la carte, plus intense à mesure qu'on avance */
+[data-swipe]{touch-action:pan-y}
+.swiping{user-select:none;-webkit-user-select:none;cursor:grabbing;box-shadow:0 6px 18px rgb(0 0 0/.25)}
+.swipe-live{position:relative;z-index:2}
+.swipe-bg{position:absolute;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:0 18px;
+  box-sizing:border-box;color:#fff;font-weight:700;font-size:15px;pointer-events:none;overflow:hidden}
+.swipe-bg.swipe-done{background:#2BB673}
+.swipe-bg.swipe-drop{background:var(--alert)}
+.swipe-bg.swipe-done,.swipe-bg.swipe-drop{opacity:calc(.35 + .65*var(--p,0))}
+.swipe-bg.armed{opacity:1;box-shadow:inset 0 0 0 3px #fff}
+.swipe-bg.armed span{animation:swipe-pulse .6s ease-in-out infinite alternate}
+@keyframes swipe-pulse{from{transform:scale(1)}to{transform:scale(1.07)}}
+.swipe-hint{font-size:13px;margin:8px 0 0}
