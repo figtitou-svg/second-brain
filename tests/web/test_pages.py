@@ -754,3 +754,24 @@ def test_tasks_sort_menu_by_category_and_date():
         x = await (await c.get("/taches?tri=%3Cx%3E")).text()
         assert 'data-refresh="/fragment/taches?filtre=tout"' in x and "<x>" not in x
     run(app, scenario)
+
+
+def test_tasks_page_shows_step_headings_with_progress():
+    app, db = make()
+    pr = Project(name="Cyber")
+    db.save_project(pr)
+    m1, m2 = Milestone(project_id=pr.id, title="Bases", position=0), Milestone(project_id=pr.id, title="Attaque", position=1)
+    db.save_milestone(m1)
+    db.save_milestone(m2)
+    db.upsert_task(Task(title="Fait", project_id=pr.id, milestone_id=m1.id, status="done"))
+    db.upsert_task(Task(title="Reste", project_id=pr.id, milestone_id=m1.id))
+    db.upsert_task(Task(title="Plus tard", project_id=pr.id, milestone_id=m2.id))
+
+    async def scenario(c):
+        await login(c)
+        t = await (await c.get("/fragment/taches")).text()
+        assert "Étape 1/2" in t and "Étape 2/2" in t and "1/2 faite" in t and "en cours" in t
+        assert t.index("Étape 1/2") < t.index(">Reste<") < t.index("Étape 2/2") < t.index(">Plus tard<")
+        d = await (await c.get("/fragment/taches?tri=date")).text()
+        assert "Étape 1/2" not in d
+    run(app, scenario)

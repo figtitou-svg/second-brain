@@ -492,3 +492,13 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .swipe-bg.armed span{animation:swipe-pulse .6s ease-in-out infinite alternate}
 @keyframes swipe-pulse{from{transform:scale(1)}to{transform:scale(1.07)}}
 .swipe-hint{font-size:13px;margin:8px 0 0}
+
+/* page Tâches : en-tête d'étape dans chaque projet */
+.stephead{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;margin-top:8px;padding:2px 2px 0;
+  border-bottom:1px solid var(--line);min-width:0}
+.stephead:first-child{margin-top:0}
+.stephead .sh-num{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--c)}
+.stephead .sh-title{font-weight:700}
+.stephead .sh-prog{font-size:13px}
+.stephead.current .sh-title{color:var(--c)}
+.stephead .gbar{flex:1 0 100%;height:4px;margin:4px 0 6px}

@@ -418,6 +418,17 @@ class TaskRow:
     color: str
     category: str | None = None   # préfixe `[Esp]` du titre : donne sa couleur et son étiquette à la tâche
     name: str = ""                # titre sans ce préfixe
+    step_info: "StepInfo | None" = None   # où en est l'étape de la tâche (page Tâches, groupes par projet)
+
+
+@dataclass(frozen=True)
+class StepInfo:
+    number: int       # rang de l'étape dans le projet (1 = première)
+    count: int        # nombre d'étapes du projet
+    title: str
+    done: int         # tâches faites de l'étape
+    total: int        # tâches de l'étape (hors ignorées)
+    current: bool     # première étape non franchie : celle où l'on en est
 
 
 def task_row(t: Task, now: datetime, step: str | None, project_color: str) -> TaskRow:
@@ -517,8 +528,18 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "p
                 and ((p is not None and t.project_id == p.id) or (p is None and t.project_id not in names))]
         if not mine:
             continue
-        rows = [task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id))
-                for t in sorted(mine, key=lambda t: (t.due is None, t.due or now, t.title))]
+        infos: dict[str, StepInfo] = {}
+        if p is not None:
+            ms = sorted(db.list_milestones(p.id), key=lambda m: m.position)
+            live = [t for t in db.list_project_tasks(p.id) if t.status != "dropped"]
+            current = next((m.id for m in ms if m.status == "open"), None)
+            for i, m in enumerate(ms, 1):
+                inside = [t for t in live if t.milestone_id == m.id]
+                infos[m.id] = StepInfo(i, len(ms), m.title, sum(1 for t in inside if t.status == "done"), len(inside), m.id == current)
+        rows = [replace(task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id)),
+                        step_info=infos.get(t.milestone_id))
+                for t in sorted(mine, key=lambda t: (infos[t.milestone_id].number if t.milestone_id in infos else 999,
+                                                     t.due is None, t.due or now, t.title))]
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
                                 p.id if p else None, rows, p.id if p else "sans-projet"))
     return (groups if tri not in TRIS or tri == "projet" else regroup(groups, tri, now)), counts

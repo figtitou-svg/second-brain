@@ -56,8 +56,11 @@ def test_task_groups_by_project_then_without_project():
     groups, counts = data.task_groups(db, NOW, "tout")
     assert [g.name for g in groups] == ["Projet IA", "Job", "Sans projet"]
     ia_group = next(g for g in groups if g.name == "Projet IA")
-    assert [r.title for r in ia_group.rows] == ["[IA] A", "[IA] B"]            # par échéance
-    assert ia_group.rows[1].step == "Modèle" and ia_group.rows[0].status == "scheduled"
+    assert [r.title for r in ia_group.rows] == ["[IA] B", "[IA] A"]            # par étape, puis échéance ; sans étape en dernier
+    assert ia_group.rows[0].step == "Modèle" and ia_group.rows[1].status == "scheduled"
+    si = ia_group.rows[0].step_info
+    assert (si.number, si.count, si.title, si.done, si.total, si.current) == (1, 1, "Modèle", 0, 1, True)
+    assert ia_group.rows[1].step_info is None
     assert ia_group.color == data.project_colors(db)[ia.id]
     assert counts == {"tout": 4, "retard": 0, "semaine": 3, "sans-projet": 1}
 
