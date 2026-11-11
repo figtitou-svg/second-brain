@@ -36,7 +36,21 @@ def config() -> dict[str, Any] | None:
             # de la liste, comme « Comptes et sécurité », n'est jamais lu)
             "folders": [f.strip() for f in (os.getenv("INSA_IMAP_FOLDERS") or os.getenv("INSA_IMAP_FOLDER") or "INBOX").split(",")
                         if f.strip()] or ["INBOX"],
-            "days": int(os.getenv("INSA_IMAP_DAYS", "2") or 2)}
+            "days": int(os.getenv("INSA_IMAP_DAYS", "2") or 2),
+            # expéditeurs jamais lus (ni tâche, ni mémoire) : morceaux d'adresse, séparés par des virgules
+            "skip": [s.strip().lower() for s in (os.getenv("INSA_IMAP_SKIP") or DEFAULT_SKIP).split(",") if s.strip()]}
+
+
+# alertes de compte : codes de connexion, MFA, alertes de sécurité (ce n'est jamais une tâche)
+DEFAULT_SKIP = "mfa-noreply@,notify@updates.notion,nepasrepondre@sport-u.com"
+
+
+def skipped(header: bytes | None, skip: list[str]) -> bool:
+    """Le mail vient d'un expéditeur à ignorer (alerte de compte…)."""
+    if not header or not skip:
+        return False
+    frm = str(email.message_from_bytes(header, policy=policy.default).get("from", "") or "").lower()
+    return any(s in frm for s in skip)
 
 
 def mutf7(name: str) -> str:
@@ -108,7 +122,7 @@ def message_key(header: bytes | None) -> str | None:
     return f"insa:mid:{mid}" if mid else None
 
 
-def _poll_folder(conn: Any, folder: str, since: str, notify: Notify) -> int:
+def _poll_folder(conn: Any, folder: str, since: str, notify: Notify, skip: list[str] | None = None) -> int:
     validity = (conn.response("UIDVALIDITY")[1] or [b"0"])[0]
     validity = validity.decode() if isinstance(validity, bytes) else str(validity or "0")
     uids = b" ".join(x for x in _ok(conn.uid("SEARCH", None, f"SINCE {since}")) if x).split()
@@ -118,7 +132,10 @@ def _poll_folder(conn: Any, folder: str, since: str, notify: Notify) -> int:
         legacy = f"insa:{validity}:{uid.decode()}" if folder == "INBOX" else f"insa:{folder}:{validity}:{uid.decode()}"
         if memory.has_source(legacy):
             continue
-        key = message_key(_first(_ok(conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"))))
+        header = _first(_ok(conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID FROM)])")))
+        if skipped(header, skip or []):
+            continue
+        key = message_key(header)
         if key and memory.has_source(key):
             continue
         raw = _first(_ok(conn.uid("FETCH", uid, "(BODY.PEEK[])")))
@@ -147,7 +164,7 @@ def poll(notify: Notify, cfg: dict[str, Any] | None = None,
             if typ != "OK":                              # dossier pas (encore) créé : on passe au suivant
                 log.warning("mail INSA : dossier %r introuvable", folder)
                 continue
-            n += _poll_folder(conn, folder, since, notify)
+            n += _poll_folder(conn, folder, since, notify, cfg.get("skip"))
         return n
     finally:
         try:

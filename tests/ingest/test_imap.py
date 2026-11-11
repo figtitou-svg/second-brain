@@ -129,5 +129,19 @@ def test_disabled_without_credentials(monkeypatch):
     monkeypatch.setenv("INSA_IMAP_USER", "u")
     monkeypatch.setenv("INSA_IMAP_PASSWORD", "p")
     assert ingest_imap.config()["port"] == 993 and ingest_imap.config()["folders"] == ["INBOX"]
+    monkeypatch.setenv("INSA_IMAP_SKIP", "")
+    assert "mfa-noreply@" in ingest_imap.config()["skip"]           # vide = alertes par défaut
     monkeypatch.setenv("INSA_IMAP_FOLDERS", "INBOX, Cours 3IF ,Langues")
     assert ingest_imap.config()["folders"] == ["INBOX", "Cours 3IF", "Langues"]
+
+
+def test_account_alerts_are_never_read(mem):
+    alert = EmailMessage()
+    alert["From"] = "MFA <mfa-noreply@insa-lyon.fr>"
+    alert["Subject"] = "[Action requise] Activation MFA"
+    alert.set_content("Votre code : 123456")
+    imap = FakeImap({b"1": alert.as_bytes(), b"2": raw_mail()})
+    cfg = dict(CFG, skip=ingest_imap.DEFAULT_SKIP.split(","))
+    assert ingest_imap.poll(lambda *a: None, cfg, lambda h, p: imap, date(2026, 11, 11)) == 1
+    assert len(mem) == 1 and "123456" not in mem[0][0]
+    assert not [c for c in imap.calls if c[0] == "FETCH" and c[1] == b"1" and c[2] == "(BODY.PEEK[])"]
