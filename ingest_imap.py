@@ -5,6 +5,7 @@ déplacé ou supprimé. Identifiants dans .env uniquement (INSA_IMAP_HOST, INSA_
 """
 from __future__ import annotations
 
+import base64
 import email
 import html
 import imaplib
@@ -31,8 +32,33 @@ def config() -> dict[str, Any] | None:
         return None
     return {"host": host, "user": user, "password": password,
             "port": int(os.getenv("INSA_IMAP_PORT", "993") or 993),
-            "folder": os.getenv("INSA_IMAP_FOLDER", "INBOX").strip() or "INBOX",
+            # dossiers lus, séparés par des virgules (les filtres Zimbra rangent les mails ; un dossier absent
+            # de la liste, comme « Comptes et sécurité », n'est jamais lu)
+            "folders": [f.strip() for f in (os.getenv("INSA_IMAP_FOLDERS") or os.getenv("INSA_IMAP_FOLDER") or "INBOX").split(",")
+                        if f.strip()] or ["INBOX"],
             "days": int(os.getenv("INSA_IMAP_DAYS", "2") or 2)}
+
+
+def mutf7(name: str) -> str:
+    """Nom de dossier en UTF-7 modifié (RFC 3501), entre guillemets : « Vie INSA et département » passe tel quel."""
+    out, run = [], ""
+
+    def flush() -> None:
+        nonlocal run
+        if run:
+            b = base64.b64encode(run.encode("utf-16-be")).decode().rstrip("=").replace("/", ",")
+            out.append(f"&{b}-")
+            run = ""
+
+    for ch in name:
+        if 0x20 <= ord(ch) <= 0x7E:
+            flush()
+            out.append("&-" if ch == "&" else ch)
+        else:
+            run += ch
+    flush()
+    quoted = "".join(out).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{quoted}"'
 
 
 def imap_date(d: date) -> str:
@@ -70,6 +96,40 @@ def _ok(resp: tuple[str, list]) -> list:
     return data
 
 
+def _first(data: list) -> bytes | None:
+    return next((part[1] for part in data if isinstance(part, tuple) and len(part) > 1), None)
+
+
+def message_key(header: bytes | None) -> str | None:
+    """Clé stable d'un mail (son Message-ID) : un mail rangé dans un autre dossier n'est pas traité deux fois."""
+    if not header:
+        return None
+    mid = str(email.message_from_bytes(header, policy=policy.default).get("message-id", "") or "").strip().strip("<>").strip()
+    return f"insa:mid:{mid}" if mid else None
+
+
+def _poll_folder(conn: Any, folder: str, since: str, notify: Notify) -> int:
+    validity = (conn.response("UIDVALIDITY")[1] or [b"0"])[0]
+    validity = validity.decode() if isinstance(validity, bytes) else str(validity or "0")
+    uids = b" ".join(x for x in _ok(conn.uid("SEARCH", None, f"SINCE {since}")) if x).split()
+    n = 0
+    for uid in uids[-MAX_PER_POLL:]:                     # les plus récents, du plus ancien au plus récent
+        # ancienne clé (dossier + numéro) : gardée pour la Réception, déjà utilisée avant les dossiers
+        legacy = f"insa:{validity}:{uid.decode()}" if folder == "INBOX" else f"insa:{folder}:{validity}:{uid.decode()}"
+        if memory.has_source(legacy):
+            continue
+        key = message_key(_first(_ok(conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"))))
+        if key and memory.has_source(key):
+            continue
+        raw = _first(_ok(conn.uid("FETCH", uid, "(BODY.PEEK[])")))
+        if not raw:
+            continue
+        text, subject = to_text(raw)
+        process_mail(text, subject, key or legacy, notify)
+        n += 1
+    return n
+
+
 def poll(notify: Notify, cfg: dict[str, Any] | None = None,
          connect: Callable[[str, int], Any] | None = None, today: date | None = None) -> int:
     """Traite les mails INSA non encore vus des derniers jours. Retourne le nombre de nouveaux mails."""
@@ -80,23 +140,14 @@ def poll(notify: Notify, cfg: dict[str, Any] | None = None,
     conn = connect(cfg["host"], cfg["port"])
     try:
         _ok(conn.login(cfg["user"], cfg["password"]))
-        _ok(conn.select(cfg["folder"], readonly=True))
-        validity = (conn.response("UIDVALIDITY")[1] or [b"0"])[0]
-        validity = validity.decode() if isinstance(validity, bytes) else str(validity or "0")
         since = imap_date((today or datetime.now().date()) - timedelta(days=cfg["days"]))
-        uids = b" ".join(x for x in _ok(conn.uid("SEARCH", None, f"SINCE {since}")) if x).split()
         n = 0
-        for uid in uids[-MAX_PER_POLL:]:                 # les plus récents, du plus ancien au plus récent
-            source = f"insa:{validity}:{uid.decode()}"
-            if memory.has_source(source):
+        for folder in cfg["folders"]:
+            typ, _ = conn.select(mutf7(folder) if folder != "INBOX" else folder, readonly=True)
+            if typ != "OK":                              # dossier pas (encore) créé : on passe au suivant
+                log.warning("mail INSA : dossier %r introuvable", folder)
                 continue
-            data = _ok(conn.uid("FETCH", uid, "(BODY.PEEK[])"))
-            raw = next((part[1] for part in data if isinstance(part, tuple) and len(part) > 1), None)
-            if not raw:
-                continue
-            text, subject = to_text(raw)
-            process_mail(text, subject, source, notify)
-            n += 1
+            n += _poll_folder(conn, folder, since, notify)
         return n
     finally:
         try:

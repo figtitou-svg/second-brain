@@ -239,6 +239,7 @@ def extract_items(
     cache: ExtractCache | None = None,
     now: datetime | None = None,
     projects: list[dict] | None = None,
+    avoid: list[str] | None = None,
 ) -> Extraction:
     """Extrait tâches et événements de `text`. Vide si l'extraction échoue deux fois.
 
@@ -249,6 +250,8 @@ def extract_items(
     key = content_hash(text, sensitivity)
     if projects:  # la liste des projets fait partie de la clé : un rattachement ancien ne doit pas être resservi
         key += ":p" + hashlib.sha256(json.dumps(projects, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
+    if avoid:     # les refus récents font partie de la clé : un nouveau refus doit changer la réponse
+        key += ":a" + hashlib.sha256("\n".join(avoid).encode()).hexdigest()[:12]
 
     cached = cache.get(key)
     if cached is not None:
@@ -266,6 +269,11 @@ def extract_items(
     prompt = (f"Date actuelle : {jours[now.weekday()]} {now.isoformat()}\n\n"
               f"Calendrier des prochains jours :\n{calendrier}\n\nTexte :\n{text}")
     system = SYSTEM_PROMPT
+    if avoid:
+        refus = "\n".join(f"- {a}" for a in avoid)
+        prompt = ("Tâches tirées de mails que l'utilisateur a REFUSÉES récemment (il les a ignorées) : ne propose "
+                  "PAS de tâche du même genre ; s'il n'y a rien d'autre, laisse tasks vide.\n"
+                  f"{refus}\n\n{prompt}")
     if projects:
         prompt = f"{_projects_block(projects)}\n\n{prompt}"
         system = SYSTEM_PROMPT + PROJECT_RULES

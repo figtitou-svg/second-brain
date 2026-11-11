@@ -126,6 +126,12 @@ CREATE TABLE IF NOT EXISTS project_suggestions (
   state TEXT NOT NULL DEFAULT 'proposed' CHECK (state IN ('proposed','added','planned','dismissed')),
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mail_origin (
+  task_id TEXT PRIMARY KEY,
+  sender TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mail_origin_sender ON mail_origin(sender);
 """
 
 
@@ -180,6 +186,25 @@ class Database:
     def _query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
         with self._lock:
             return self._conn.execute(sql, params).fetchall()
+
+    # --- tâches tirées des mails : ce que l'utilisateur en a fait (le bot apprend de ses refus) ---------------
+    def add_mail_origin(self, task_id: str, sender: str, when: datetime) -> None:
+        self._exec("INSERT OR IGNORE INTO mail_origin (task_id, sender, created_at) VALUES (?,?,?)",
+                   (task_id, sender.lower(), when.isoformat()))
+
+    def sender_verdicts(self, sender: str) -> tuple[int, int]:
+        """(tâches refusées, tâches gardées) parmi celles tirées des mails de cet expéditeur.
+        Refusée = ignorée ; gardée = planifiée ou faite (une tâche encore en attente ne compte pas)."""
+        rows = self._query("""SELECT t.status AS s, COUNT(*) AS n FROM mail_origin m JOIN tasks t ON t.id = m.task_id
+                              WHERE m.sender = ? GROUP BY t.status""", (sender.lower(),))
+        by = {r["s"]: r["n"] for r in rows}
+        return by.get("dropped", 0), by.get("done", 0) + by.get("scheduled", 0)
+
+    def rejected_mail_tasks(self, limit: int = 12) -> list[tuple[str, str]]:
+        """(expéditeur, titre) des dernières tâches de mails que l'utilisateur a ignorées."""
+        rows = self._query("""SELECT m.sender AS sender, t.title AS title FROM mail_origin m JOIN tasks t ON t.id = m.task_id
+                              WHERE t.status = 'dropped' ORDER BY m.created_at DESC LIMIT ?""", (limit,))
+        return [(r["sender"], r["title"]) for r in rows]
 
     # --- tasks -------------------------------------------------------------
     def upsert_task(self, t: Task) -> None:

@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+import re
+from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
 from coach.db import Database
@@ -30,16 +31,43 @@ def _need() -> tuple[Database, CoachScheduler]:
     return _db, _sched
 
 
+MAIL_SOURCES = ("gmail:", "insa:")
+MUTE_AFTER = 3          # refus d'affilée (sans aucune tâche gardée) avant de ne plus proposer les tâches d'un expéditeur
+_SENDER = re.compile(r"^De : .*?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)", re.M)
+
+
+def mail_sender(text: str) -> str | None:
+    """Adresse de l'expéditeur, lue sur la ligne « De : … » que l'ingestion met en tête du mail."""
+    m = _SENDER.search(text)
+    return m.group(1).lower() if m else None
+
+
+def sender_muted(db: Database, sender: str) -> bool:
+    """Ses tâches ont été ignorées au moins MUTE_AFTER fois et aucune n'a été gardée (planifiée ou faite)."""
+    rejected, kept = db.sender_verdicts(sender)
+    return rejected >= MUTE_AFTER and kept == 0
+
+
 def extract_items(text: str, source_id: str, sensitivity: str) -> tuple[list[Task], list[Event]]:
     """Extrait puis enregistre les tâches nouvelles (pending) et les rendez-vous nouveaux (« proposed ») ;
     ignore ce qui est déjà connu."""
     db, _ = _need()
     ctx = project_service.extraction_context(db)  # projets actifs : l'IA peut proposer un rattachement
-    res = extract.extract_items(text, source_id, sensitivity, projects=ctx or None)  # type: ignore[arg-type]
+    sender = mail_sender(text) if source_id.startswith(MAIL_SOURCES) else None
+    # le bot apprend des refus : les dernières tâches de mails ignorées sont données en contre-exemples
+    avoid = [f"{title} (mail de {who})" for who, title in db.rejected_mail_tasks()] if sender else []
+    res = extract.extract_items(text, source_id, sensitivity, projects=ctx or None,  # type: ignore[arg-type]
+                                avoid=avoid or None)
     tasks = dedupe.dedupe_tasks(res.tasks, db.list_tasks())  # ni déjà connue, ni répétée, ni une démarche
+    if sender and tasks and sender_muted(db, sender):
+        log.info("mail de %s : %d tâche(s) non proposée(s) (expéditeur dont les tâches sont toujours refusées)",
+                 sender, len(tasks))
+        tasks = []                                   # le mail reste en mémoire : on peut toujours poser des questions
     tasks = [project_service.attach_by_category(db, t) for t in tasks]  # préfixe = catégorie d'un projet
     for t in tasks:
         db.upsert_task(t)
+        if sender:
+            db.add_mail_origin(t.id, sender, datetime.now().astimezone())
         hint = res.hints.get(t.id)
         if hint and not t.project_id:
             project_service.propose(db, t, *hint)
