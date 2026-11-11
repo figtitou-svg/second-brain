@@ -54,6 +54,19 @@ def task_buttons(task_id: str) -> Buttons:
              ("Ignorer", f"ign:{task_id}")]]
 
 
+def mail_task_buttons(task_id: str) -> Buttons:
+    """Tâche proposée par un mail : elle n'entre dans la liste que si on la garde (ou la planifie)."""
+    return [[("✅ Garder", f"keep:{task_id}"), ("📌 Planifier", f"plan:{task_id}"), ("🗑 Ignorer", f"ign:{task_id}")]]
+
+
+def undo_buttons(task_id: str) -> Buttons:
+    return [[("↩ Annuler", f"undo:{task_id}")]]
+
+
+# agir sur une tâche proposée (autrement que l'ignorer) la fait entrer dans la liste
+CONFIRMING = frozenset({"keep", "plan", "durset", "td", "tpo", "tnw", "pjok", "pjset"})
+
+
 def event_buttons(event_id: str) -> Buttons:
     return [[("Ajouter à l'agenda", f"evadd:{event_id}"), ("Ignorer", f"evign:{event_id}")]]
 
@@ -358,11 +371,26 @@ class BotService:
     def on_callback(self, data: str) -> Reply:
         action, _, rest = data.partition(":")
         try:
+            if action in CONFIRMING and rest:
+                try:
+                    self.coach.confirm(rest.split(":")[0])
+                except Exception:  # noqa: BLE001 - la confirmation ne doit jamais bloquer l'action demandée
+                    log.warning("confirmation de la tâche %r impossible", rest, exc_info=True)
+            if action == "keep":
+                return Reply(f"✅ <b>{fmt.esc(self._task_title(rest))}</b> est gardée dans tes tâches.")
             if action == "plan":
                 return Reply(self.coach.schedule(rest))
             if action == "ign":
                 self.coach.ignore(rest)
-                return Reply("🗑 Tâche ignorée.")
+                return Reply("🗑 Tâche ignorée.", undo_buttons(rest))
+            if action == "ignall":
+                n = self.coach.ignore_proposed()
+                s = "s" if n > 1 else ""
+                return Reply(f"🗑 {n} tâche{s} proposée{s} ignorée{s}." if n else "Rien à ignorer.")
+            if action == "undo":
+                return Reply(self.coach.restore_task(rest))
+            if action == "pls":
+                return Reply(self.coach.schedule_step(rest))
             if action == "dur":
                 return Reply("⏱ Quelle durée ?",
                              [[(fmt.dur(m), f"durset:{rest}:{m}") for m in DURATIONS[i:i + 4]]
@@ -377,8 +405,9 @@ class BotService:
                 return Reply(self.coach.report_outcome(rest, outcome))
             if action == "td":
                 title = self._task_title(rest)
-                return Reply(f"✅ <b>{fmt.esc(title)}</b> est faite." if self.coach.mark_done(rest)
-                             else "❓ Tâche introuvable.")
+                if self.coach.mark_done(rest):
+                    return Reply(f"✅ <b>{fmt.esc(title)}</b> est faite.", undo_buttons(rest))
+                return Reply("❓ Tâche introuvable.")
             if action == "nudgego":  # relance : « Je m'y mets »
                 return Reply(self.coach.start_now(rest))
             if action == "nudgeno":

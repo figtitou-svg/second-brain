@@ -40,6 +40,8 @@ SYSTEM_PROMPT = (
     "Ne crée PAS de tâche pour remplir/compléter ses informations ou son profil, ni pour répondre, accepter "
     "ou décliner une invitation. Un texte donne en général UNE seule tâche : ne découpe pas en sous-étapes, "
     "ne répète pas la même tâche sous deux formulations, et mets une liste vide si rien n'est vraiment à faire. "
+    "Écris title et description en FRANÇAIS, même si le texte est dans une autre langue (garde tels quels les "
+    "noms propres, les intitulés officiels et les préfixes entre crochets). "
     "Réponds UNIQUEMENT avec un JSON de la forme "
     '{"tasks":[{"title":str,"do_on":"AAAA-MM-JJ"|null,"due":ISO8601|null,"estimated_minutes":int,'
     '"priority":"low"|"medium"|"high","description":str|null,"confidence":0..1}],'

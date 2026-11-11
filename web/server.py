@@ -387,7 +387,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     pages = {
         "agenda": organisation("agenda", "agenda", "agenda", agenda_params),
         "focus": organisation("focus", "rows", "focus"),
-        "taches": organisation("taches", "tasks", "tasks", lambda request: (request.query.get("filtre", "tout"), request.query.get("tri", "projet"))),
+        "taches": organisation("taches", "tasks", "tasks", lambda request: (request.query.get("filtre", "tout"), request.query.get("tri", "maintenant"))),
         "projets": organisation("projets", "cards", "projects"),
         "semaine": organisation("semaine", "week", "week"),
         "a-trier": organisation("a-trier", "a_trier", "a_trier"),

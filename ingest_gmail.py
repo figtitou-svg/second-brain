@@ -8,7 +8,7 @@ from typing import Any, Callable
 import memory
 from llm_router.router import cloud_allowed_for_mails
 from coach import fmt, store
-from bot.handlers import event_buttons, task_buttons
+from bot.handlers import event_buttons, mail_task_buttons
 
 log = logging.getLogger("ingest_gmail")
 Notify = Callable[[str, "list[list[tuple[str, str]]] | None"], None]
@@ -32,7 +32,7 @@ def process_mail(text: str, subject: str, source: str, notify: Notify) -> None:
         notify(f"📧 <b>Plusieurs tâches possibles dans ce mail</b> ({len(tasks)}) : "
                "garde seulement celles qui comptent, ignore le reste.", None)
     for t in tasks:
-        card, buttons = fmt.task_card(t, "📧 <b>Tâche dans un mail</b>"), task_buttons(t.id)
+        card, buttons = fmt.task_card(t, "📧 <b>Tâche proposée par un mail</b>"), mail_task_buttons(t.id)
         try:
             prop = store.project_proposal(t.id)  # « 📁 Projet … ? » si l'IA a reconnu un projet
         except Exception:  # noqa: BLE001 - le mail est déjà marqué vu : la carte ne doit jamais se perdre

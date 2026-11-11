@@ -2,5 +2,10 @@
 {% block title %}Tâches · Second Brain{% endblock %}
 {% block main %}
 <h1>Tâches</h1>
-<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}{{ '' if tasks.tri == 'projet' else '&tri=' ~ tasks.tri }}">{% include "_taches_body.html" %}</section>
+<form class="composer quickadd" data-say-form aria-label="Ajouter une tâche">
+  <input type="text" name="text" autocomplete="off" maxlength="500" placeholder="Ajouter : [Esp] rendre la vidéo vendredi" aria-label="Nouvelle tâche">
+  <button type="submit">Ajouter</button>
+</form>
+<input type="search" id="tfilter" class="tfilter" placeholder="Chercher dans les tâches…" aria-label="Chercher dans les tâches" autocomplete="off">
+<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}{{ '' if tasks.tri == 'maintenant' else '&tri=' ~ tasks.tri }}">{% include "_taches_body.html" %}</section>
 {% endblock %}

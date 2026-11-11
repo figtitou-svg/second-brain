@@ -66,6 +66,11 @@
     toast.hidden = false;
     clearTimeout(show.t);
     const first = toast.querySelector("[data-cb]");
+    // « Annuler » seul : le bandeau se referme de lui-même, sans prendre le focus (on peut l'ignorer)
+    if (first && first.dataset.cb.startsWith("undo:") && toast.querySelectorAll("[data-cb]").length === 1) {
+      show.t = setTimeout(() => hideToast(false), 8000);
+      return;
+    }
     if (first) { if (!quiet) first.focus(); return; }     // bandeau « direct » : jamais de vol de focus (saisie en cours)
     show.t = setTimeout(() => hideToast(false), 6000);
   }
@@ -160,10 +165,31 @@
   // l'événement toggle ne remonte pas : écoute en capture
   document.addEventListener("toggle", (ev) => {
     const d = ev.target;
-    if (!(d instanceof HTMLDetailsElement) || !d.matches("details.tgroup[data-gkey]")) return;
+    if (!(d instanceof HTMLDetailsElement) || !d.matches("details.tgroup[data-gkey]") || filtering) return;
     try { localStorage.setItem(FOLD + d.dataset.gkey, d.open ? "1" : "0"); } catch (e) { /* retenu pour cette page seulement */ }
   }, true);
   restoreFolds(document);
+
+  // Recherche dans les tâches : filtre les cartes affichées, sans appel au serveur ; les groupes qui contiennent
+  // un résultat s'ouvrent (sans que ce soit retenu comme un choix), les autres disparaissent.
+  const tfilter = document.getElementById("tfilter");
+  const fold = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  let filtering = false;
+  function applyFilter() {
+    const zone = document.getElementById("taches");
+    if (!tfilter || !zone) return;
+    const q = fold(tfilter.value.trim());
+    filtering = q !== "";
+    zone.classList.toggle("filtering", filtering);
+    for (const li of zone.querySelectorAll("li.taskcard")) li.hidden = filtering && !fold(li.textContent).includes(q);
+    for (const d of zone.querySelectorAll("details.tgroup")) {
+      const hit = d.querySelector("li.taskcard:not([hidden])") !== null;
+      d.hidden = filtering && !hit;
+      if (filtering && hit) d.open = true;
+    }
+    if (!filtering) restoreFolds(zone);
+  }
+  tfilter?.addEventListener("input", applyFilter);
 
   // les <details data-gkey> (groupes de projet, « Plus » d'une tâche) gardent leur état ouvert ou replié
   // d'un rechargement à l'autre ; ceux qui apparaissent prennent l'état écrit dans le gabarit
@@ -172,6 +198,7 @@
     for (const d of el.querySelectorAll("details[data-gkey]")) state.set(d.dataset.gkey, d.open);
     el.innerHTML = html;
     restoreFolds(el);
+    applyFilter();
     if (!state.size) return;
     for (const d of el.querySelectorAll("details[data-gkey]")) {
       if (state.has(d.dataset.gkey)) d.open = state.get(d.dataset.gkey);
@@ -314,6 +341,7 @@
     if (cb) {
       ev.preventDefault();
       if (cb.disabled) return;
+      if (cb.dataset.confirm && !window.confirm(cb.dataset.confirm)) return;
       const inToast = toast.contains(cb);
       // décrit avant le clic : une fois désactivé le bouton peut perdre le focus, puis disparaître au rechargement
       const hadFocus = document.activeElement === cb || inToast;
@@ -427,8 +455,9 @@
     const done = s.dx > 0;
     s.bg.className = `swipe-bg ${done ? "swipe-done" : "swipe-drop"}${s.armed ? " armed" : ""}`;
     s.bg.style.setProperty("--p", p.toFixed(3));
-    s.bg.firstChild.textContent = done ? (s.armed ? "✅ Relâche pour terminer" : "✅ Fait") : "";
-    s.bg.lastChild.textContent = done ? "" : (s.armed ? "Relâche pour supprimer 🗑" : "Supprimer 🗑");
+    const ds = s.li.dataset;                         // libellés propres à la liste (À trier : garder / jeter)
+    s.bg.firstChild.textContent = done ? (s.armed ? ds.swipeYesGo || "✅ Relâche pour terminer" : ds.swipeYes || "✅ Fait") : "";
+    s.bg.lastChild.textContent = done ? "" : (s.armed ? ds.swipeNoGo || "Relâche pour supprimer 🗑" : ds.swipeNo || "Supprimer 🗑");
     ev.preventDefault();
   });
   document.addEventListener("pointerup", (ev) => { if (swipe && ev.pointerId === swipe.id) swipeEnd(true); });

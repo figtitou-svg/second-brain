@@ -158,6 +158,16 @@ def recent_docs(limit: int = 50, kind: str | None = None) -> list[dict]:
     return [_row(r) for r in rows]
 
 
+def doc_id_by_source(source: str) -> str | None:
+    """Lecture seule : l'identifiant du document venu de cette source (un mail, par exemple), ou None."""
+    try:
+        with _lock:
+            r = _db().execute("SELECT id FROM docs WHERE source=? LIMIT 1", (source,)).fetchone()
+    except sqlite3.Error:
+        return None
+    return r[0] if r else None
+
+
 def get_doc(doc_id: str) -> dict | None:
     """Lecture seule : un document avec son texte intégral, ou None."""
     try:

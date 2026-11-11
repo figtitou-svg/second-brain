@@ -45,6 +45,10 @@ class CoachPort(Protocol):
     def schedule(self, task_id: str) -> str: ...  # texte de confirmation (créneau choisi)
     def set_duration(self, task_id: str, minutes: int) -> str | None: ...  # texte du nouveau créneau si replacée
     def ignore(self, task_id: str) -> None: ...
+    def confirm(self, task_id: str) -> bool: ...          # garder une tâche proposée par un mail
+    def ignore_proposed(self) -> int: ...                 # jeter toutes les tâches proposées
+    def restore_task(self, task_id: str) -> str: ...      # annuler un « fait » / « ignoré »
+    def schedule_step(self, milestone_id: str) -> str: ...
     def report_outcome(self, block_id: str, outcome: str) -> str: ...  # done|not_finished|rescheduled|next_week
     def postpone_task(self, task_id: str, when: str) -> str: ...  # when : tomorrow|next_week|AAAA-MM-JJ
     def resolve(self, action: str, task_id: str) -> str: ...  # split|drop
@@ -145,6 +149,18 @@ class CoachAdapter:
 
     def ignore(self, task_id: str) -> None:
         self._store.ignore(task_id)
+
+    def confirm(self, task_id: str) -> bool:
+        return bool(self._store.confirm(task_id))
+
+    def ignore_proposed(self) -> int:
+        return int(self._store.ignore_proposed())
+
+    def restore_task(self, task_id: str) -> str:
+        return self._store.restore_task(task_id)
+
+    def schedule_step(self, milestone_id: str) -> str:
+        return self._store.schedule_step(milestone_id)
 
     def report_outcome(self, block_id: str, outcome: str) -> str:
         return self._store.report_outcome(block_id, outcome)

@@ -73,6 +73,8 @@
           {% if s.total %}<span>{{ s.done }}/{{ s.total }} tâche{{ "s" if s.total > 1 }}</span>{% else %}<span>Aucune tâche</span>{% endif %}</p>
         {% if s.total %}<div class="gbar" aria-hidden="true"><i style="width: {{ (s.done * 100 // s.total) }}%"></i></div>{% endif %}
         {% if s.tasks %}<ul class="plist">{% for t in s.tasks %}{{ task_row(t) }}{% endfor %}</ul>{% endif %}
+        {% if p.status == "active" and s.tasks|selectattr("status", "equalto", "pending")|list %}
+        <div class="row-actions"><button type="button" data-cb="pls:{{ s.step_id }}" aria-label="Planifier cette étape : {{ s.title }}">📌 Planifier cette étape</button></div>{% endif %}
       </div>
     </li>{% endfor %}</ol>
   {% else %}

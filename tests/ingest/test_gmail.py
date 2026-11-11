@@ -78,7 +78,7 @@ def test_mail_card_survives_a_failing_project_proposal(monkeypatch, tmp_path):
 
     n, sent = _poll_with_task(monkeypatch, tmp_path, boom)
     assert n == 1 and len(sent) == 1
-    assert "Envoyer le devis" in sent[0][0] and sent[0][1] == ingest_gmail.task_buttons("t1")
+    assert "Envoyer le devis" in sent[0][0] and sent[0][1] == ingest_gmail.mail_task_buttons("t1")
 
 
 def test_mail_card_carries_the_project_proposal(monkeypatch, tmp_path):
@@ -86,4 +86,4 @@ def test_mail_card_carries_the_project_proposal(monkeypatch, tmp_path):
     text, buttons = sent[0]
     flat = [b for row in buttons for b in row]
     assert "📁 <b>Projet IA</b> ?" in text
-    assert ("Oui", "pjok:x") in flat and ("Planifier", "plan:t1") in flat
+    assert ("Oui", "pjok:x") in flat and ("📌 Planifier", "plan:t1") in flat and ("✅ Garder", "keep:t1") in flat

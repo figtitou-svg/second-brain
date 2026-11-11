@@ -13,6 +13,7 @@
   <section class="card" aria-labelledby="desc-h">
     <h2 id="desc-h">Description</h2>
     {% if t.description %}<p class="notebody">{{ t.description|linkify }}</p>{% else %}<p class="muted">Aucune description.</p>{% endif %}
+    {% if t.origin_note %}<p><a class="applink" href="/notes/{{ t.origin_note }}">📧 Voir le mail d'origine</a></p>{% endif %}
   </section>
   <section class="card" aria-labelledby="info-h">
     <h2 id="info-h">Informations</h2>
@@ -28,13 +29,17 @@
     </dl>
   </section>
   {% if t.status in ("pending", "scheduled") %}
+  {% if t.proposed %}<p class="muted" role="note">Proposée par un mail : elle n'est pas encore dans tes tâches.</p>{% endif %}
   <div class="row-actions">
-    <button type="button" class="primary" data-cb="td:{{ t.task_id }}">✅ Fait</button>
+    {% if t.proposed %}<button type="button" class="primary" data-cb="keep:{{ t.task_id }}">✅ Garder</button>{% endif %}
+    <button type="button"{% if not t.proposed %} class="primary"{% endif %} data-cb="td:{{ t.task_id }}">✅ Fait</button>
     <button type="button" data-cb="plan:{{ t.task_id }}">Planifier</button>
     <button type="button" data-cb="dur:{{ t.task_id }}">⏱ Durée</button>
     <button type="button" data-cb="tpo:{{ t.task_id }}">⏭ Demain</button>
     <button type="button" data-cb="tnw:{{ t.task_id }}">📅 Semaine prochaine</button>
     <button type="button" data-cb="ign:{{ t.task_id }}">🗑 Ignorer</button>
   </div>
+  {% elif t.status in ("done", "dropped") %}
+  <div class="row-actions"><button type="button" data-cb="undo:{{ t.task_id }}">↩ Remettre dans mes tâches</button></div>
   {% endif %}
 </div>

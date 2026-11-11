@@ -55,6 +55,7 @@
         <text x="32" y="37" class="mid">{{ r.percent }}%</text>
         {% if r.alert %}<circle cx="54" cy="10" r="6" class="alert"/>{% endif %}</svg>
       <span class="pname">{{ r.name }}</span>
+      {% if r.step %}<small class="muted">{{ r.step }}</small>{% endif %}
       <small class="{{ 'alert-text' if r.alert else 'muted' }}">{{ when }}</small>
     </button>{% endfor %}</div>
 </section>

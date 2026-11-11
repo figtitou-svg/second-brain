@@ -31,6 +31,7 @@ def _need() -> tuple[Database, CoachScheduler]:
     return _db, _sched
 
 
+MAX_PLAN_MINUTES = 600      # au-delà (10 h), une tâche n'est pas placée en créneaux
 MAIL_SOURCES = ("gmail:", "insa:")
 MUTE_AFTER = 3          # refus d'affilée (sans aucune tâche gardée) avant de ne plus proposer les tâches d'un expéditeur
 _SENDER = re.compile(r"^De : .*?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)", re.M)
@@ -163,6 +164,9 @@ def schedule(task_id: str) -> str:
         raise KeyError(task_id)
     if task.status in ("scheduled", "done", "dropped") and db.list_blocks(task_id, open_only=True):
         return f"📌 <b>Déjà planifiée</b> : {fmt.esc(task.title)}"  # un second clic ne replace rien
+    if task.estimated_minutes > MAX_PLAN_MINUTES:   # un examen de 48 h remplirait l'agenda de créneaux de travail
+        return (f"⚠️ <b>{fmt.esc(task.title)}</b> dure {fmt.dur(task.estimated_minutes)} : trop long pour être découpé en "
+                "créneaux. Réduis sa durée (⏱ Durée) ou note-la comme rendez-vous dans l'agenda.")
     res = sched.schedule_tasks([task])
     if not res.blocks:
         return f"⚠️ Aucun créneau trouvé pour <b>{fmt.esc(task.title)}</b>."
@@ -192,6 +196,54 @@ def set_duration(task_id: str, minutes: int) -> str | None:
 
 def ignore(task_id: str) -> None:
     _need()[1].drop_task(task_id)
+
+
+def confirm(task_id: str) -> bool:
+    """Garde une tâche proposée par un mail : elle entre dans la liste des tâches."""
+    return _need()[0].confirm_task(task_id)
+
+
+def ignore_proposed() -> int:
+    """« Tout ignorer » dans À trier : jette toutes les tâches de mails encore proposées."""
+    db, sched = _need()
+    todo = db.proposed_tasks()
+    for t in todo:
+        sched.drop_task(t.id)
+    return len(todo)
+
+
+def restore_task(task_id: str) -> str:
+    """Annule un « fait » ou un « ignoré » : la tâche revient dans la liste. Ses créneaux ont été retirés de
+    l'agenda : elle revient à planifier."""
+    db, _ = _need()
+    task = db.get_task(task_id)
+    if task is None:
+        raise KeyError(task_id)
+    if task.status in ("pending", "scheduled"):
+        return f"↩️ <b>{fmt.esc(task.title)}</b> est déjà dans la liste."
+    db.set_task_status(task_id, "scheduled" if db.list_blocks(task_id, open_only=True) else "pending")
+    db.confirm_task(task_id)
+    return f"↩️ Annulé : <b>{fmt.esc(task.title)}</b> est de retour dans la liste (à replanifier si elle avait un créneau)."
+
+
+def schedule_step(milestone_id: str) -> str:
+    """Planifie d'un coup toutes les tâches sans créneau d'une étape de projet."""
+    db, sched = _need()
+    m = db.get_milestone(milestone_id)
+    if m is None:
+        raise KeyError(milestone_id)
+    todo = [t for t in db.list_project_tasks(m.project_id)
+            if t.milestone_id == m.id and t.status == "pending" and not db.list_blocks(t.id, open_only=True)]
+    if not todo:
+        return f"📌 Rien à planifier dans « {fmt.esc(m.title)} » : tout a déjà un créneau."
+    res = sched.schedule_tasks(todo)
+    placed = {b.task_id for b in res.blocks}
+    s = "s" if len(placed) > 1 else ""
+    lines = [f"📌 <b>{len(placed)} tâche{s} planifiée{s}</b> dans « {fmt.esc(m.title)} »"]
+    lines += [f"• {fmt.day_short(b.start)} {fmt.rng(b.start, b.end)}" for b in sorted(res.blocks, key=lambda b: b.start)[:12]]
+    if len(placed) < len(todo):
+        lines.append(f"⚠️ {len(todo) - len(placed)} sans créneau trouvé.")
+    return "\n".join(lines)
 
 
 def report_outcome(block_id: str, outcome: str) -> str:

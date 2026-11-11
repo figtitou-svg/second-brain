@@ -53,7 +53,7 @@ def test_task_groups_by_project_then_without_project():
     db.upsert_task(Task(title="[IA] A", project_id=ia.id, due=NOW + timedelta(days=2), status="scheduled"))
     db.upsert_task(Task(title="Job C", project_id=job.id))
     db.upsert_task(Task(title="Libre", due=NOW + timedelta(days=1)))
-    groups, counts = data.task_groups(db, NOW, "tout")
+    groups, counts = data.task_groups(db, NOW, "tout", "projet")
     assert [g.name for g in groups] == ["Projet IA", "Job", "Sans projet"]
     ia_group = next(g for g in groups if g.name == "Projet IA")
     assert [r.title for r in ia_group.rows] == ["[IA] B", "[IA] A"]            # par étape, puis échéance ; sans étape en dernier
@@ -62,7 +62,7 @@ def test_task_groups_by_project_then_without_project():
     assert (si.number, si.count, si.title, si.done, si.total, si.current) == (1, 1, "Modèle", 0, 1, True)
     assert ia_group.rows[1].step_info is None
     assert ia_group.color == data.project_colors(db)[ia.id]
-    assert counts == {"tout": 4, "retard": 0, "semaine": 3, "sans-projet": 1}
+    assert counts == {"tout": 4, "retard": 0, "semaine": 3, "sans-projet": 1, "faites": 0}
 
 
 def test_task_groups_hide_done_and_dropped():
@@ -91,4 +91,4 @@ def test_task_groups_filters_and_unknown_filter_falls_back():
 
 def test_task_groups_empty():
     db, _ = env()
-    assert data.task_groups(db, NOW, "tout") == ([], {"tout": 0, "retard": 0, "semaine": 0, "sans-projet": 0})
+    assert data.task_groups(db, NOW, "tout") == ([], {"tout": 0, "retard": 0, "semaine": 0, "sans-projet": 0, "faites": 0})

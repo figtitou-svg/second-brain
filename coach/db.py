@@ -167,7 +167,9 @@ class Database:
                     "ALTER TABLE blocks ADD COLUMN style TEXT",
                     "ALTER TABLE tasks ADD COLUMN project_id TEXT",
                     "ALTER TABLE tasks ADD COLUMN milestone_id TEXT",
-                    "ALTER TABLE tasks ADD COLUMN description TEXT"):
+                    "ALTER TABLE tasks ADD COLUMN description TEXT",
+                    # 0 = proposée (à trier), 1 = entrée dans la liste sans tri (avant ce réglage), 2 = gardée
+                    "ALTER TABLE mail_origin ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1"):
             try:
                 self._conn.execute(ddl)
             except sqlite3.OperationalError:  # colonne déjà présente
@@ -189,16 +191,33 @@ class Database:
 
     # --- tâches tirées des mails : ce que l'utilisateur en a fait (le bot apprend de ses refus) ---------------
     def add_mail_origin(self, task_id: str, sender: str, when: datetime) -> None:
-        self._exec("INSERT OR IGNORE INTO mail_origin (task_id, sender, created_at) VALUES (?,?,?)",
+        """Tâche tirée d'un mail : elle attend dans « À trier » (confirmed=0) tant qu'elle n'est pas gardée."""
+        self._exec("INSERT OR IGNORE INTO mail_origin (task_id, sender, created_at, confirmed) VALUES (?,?,?,0)",
                    (task_id, sender.lower(), when.isoformat()))
+
+    def confirm_task(self, task_id: str) -> bool:
+        """« Garder » : la tâche proposée entre dans la liste. True si elle attendait."""
+        return self._exec("UPDATE mail_origin SET confirmed=2 WHERE task_id=? AND confirmed=0", (task_id,)).rowcount > 0
+
+    def is_proposed(self, task_id: str) -> bool:
+        return bool(self._query("SELECT 1 FROM mail_origin WHERE task_id=? AND confirmed=0", (task_id,)))
+
+    def proposed_tasks(self) -> list[Task]:
+        """Tâches tirées de mails, pas encore gardées ni jetées."""
+        rows = self._query("""SELECT t.* FROM tasks t JOIN mail_origin m ON m.task_id = t.id
+                              WHERE m.confirmed = 0 AND t.status IN ('pending','scheduled') ORDER BY m.created_at DESC""")
+        return [self._task(r) for r in rows]
 
     def sender_verdicts(self, sender: str) -> tuple[int, int]:
         """(tâches refusées, tâches gardées) parmi celles tirées des mails de cet expéditeur.
         Refusée = ignorée ; gardée = planifiée ou faite (une tâche encore en attente ne compte pas)."""
-        rows = self._query("""SELECT t.status AS s, COUNT(*) AS n FROM mail_origin m JOIN tasks t ON t.id = m.task_id
-                              WHERE m.sender = ? GROUP BY t.status""", (sender.lower(),))
-        by = {r["s"]: r["n"] for r in rows}
-        return by.get("dropped", 0), by.get("done", 0) + by.get("scheduled", 0)
+        rows = self._query("""SELECT CASE WHEN t.status = 'dropped' THEN 'no'
+                                          WHEN t.status IN ('done','scheduled') OR m.confirmed = 2 THEN 'yes'
+                                          ELSE 'wait' END AS v, COUNT(*) AS n
+                              FROM mail_origin m JOIN tasks t ON t.id = m.task_id
+                              WHERE m.sender = ? GROUP BY v""", (sender.lower(),))
+        by = {r["v"]: r["n"] for r in rows}
+        return by.get("no", 0), by.get("yes", 0)
 
     def rejected_mail_tasks(self, limit: int = 12) -> list[tuple[str, str]]:
         """(expéditeur, titre) des dernières tâches de mails que l'utilisateur a ignorées."""
@@ -236,9 +255,11 @@ class Database:
         return self._task(rows[0]) if rows else None
 
     def list_tasks(self, *statuses: str) -> list[Task]:
-        if statuses:
+        if statuses:   # listes de travail : une tâche de mail pas encore gardée (« À trier ») n'y figure pas
             q = ",".join("?" * len(statuses))
-            rows = self._query(f"SELECT * FROM tasks WHERE status IN ({q}) ORDER BY created_at, id", statuses)
+            rows = self._query(f"""SELECT * FROM tasks WHERE status IN ({q})
+                                   AND id NOT IN (SELECT task_id FROM mail_origin WHERE confirmed = 0)
+                                   ORDER BY created_at, id""", statuses)
         else:
             rows = self._query("SELECT * FROM tasks ORDER BY created_at, id")
         return [self._task(r) for r in rows]

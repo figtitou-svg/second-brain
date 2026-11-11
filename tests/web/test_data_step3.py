@@ -57,7 +57,7 @@ def test_a_trier_events_and_unplanned_pending_tasks():
 
 def test_a_trier_empty():
     _, v = make()
-    assert v.a_trier() == {"events": [], "tasks": []}
+    assert v.a_trier() == {"events": [], "tasks": [], "proposed": []}
 
 
 def test_suggestions_three_kinds_and_total():

@@ -96,6 +96,22 @@ class FakeCoach:
         self.calls.append(("ignore", task_id))
         self.tasks[task_id].status = "dropped"
 
+    def confirm(self, task_id: str) -> bool:
+        return True
+
+    def ignore_proposed(self) -> int:
+        self.calls.append(("ignore_proposed",))
+        return 0
+
+    def restore_task(self, task_id: str) -> str:
+        self.calls.append(("restore", task_id))
+        self.tasks[task_id].status = "pending"
+        return f"↩️ Annulé : {task_id}"
+
+    def schedule_step(self, milestone_id: str) -> str:
+        self.calls.append(("schedule_step", milestone_id))
+        return f"📌 Étape planifiée : {milestone_id}"
+
     def report_outcome(self, block_id: str, outcome: str) -> str:
         self.calls.append(("outcome", block_id, outcome))
         return f"Noté : {outcome}"

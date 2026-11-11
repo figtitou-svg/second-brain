@@ -143,6 +143,13 @@ def main() -> None:
         if ingest_imap.config() is not None:            # boîte INSA : seulement si les identifiants sont dans .env
             add("insa_mail", lambda: log.info("mail INSA : %d nouveau(x) mail(s)", ingest_imap.poll(notify)), 15)
 
+    import notion_checklist             # cases cochées dans Notion -> tâches terminées (lecture seule)
+    checklist = notion_checklist.config()
+    if checklist is not None:
+        boxes = notion_checklist.HttpBlocks(checklist[0])
+        add("notion_cases", lambda: log.info("notion (cases) : %d tâche(s) terminée(s)", notion_checklist.sync(
+            db, boxes, checklist[1], lambda tid: store.mark_done(tid))), 30)
+
     if os.getenv("DRIVE_ENABLED", "true").strip().lower() == "true":
         import drive_sync
 

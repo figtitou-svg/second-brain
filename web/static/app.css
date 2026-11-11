@@ -502,3 +502,15 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .stephead .sh-prog{font-size:13px}
 .stephead.current .sh-title{color:var(--c)}
 .stephead .gbar{flex:1 0 100%;height:4px;margin:4px 0 6px}
+
+/* Tâches : ajout rapide, recherche, prochaine tâche d'un projet replié, tâches faites */
+.quickadd{position:static;margin:10px 0 0;padding:0;background:none}
+.tfilter{display:block;width:100%;box-sizing:border-box;min-height:44px;margin-top:10px;padding:0 12px;border-radius:12px;
+  border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit}
+.filtering .stephead,.filtering .swipe-hint{display:none}
+.tgroup summary .gnext{flex:1 1 0;min-width:0;font-size:13px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tgroup[open] summary .gnext{display:none}
+.more-line{font-size:13px;margin:0;position:relative;z-index:1}
+.more-line a{color:var(--muted)}
+.donecard{opacity:.75}
+.sort-group.proposed{margin-bottom:18px}

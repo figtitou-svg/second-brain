@@ -1,10 +1,33 @@
 {# À trier : rendez-vous détectés (à ajouter à l'agenda ou à ignorer) et tâches sans créneau (à planifier).
    Heures déjà locales (Views.a_trier) ; couleur (--c) interne ; titres, lieux et étapes échappés.
    Les émojis des boutons sont aria-hidden : chaque aria-label contient le texte visible (WCAG 2.5.3). #}
-{% set ev = a_trier.events %}{% set ts = a_trier.tasks %}
-{% if not ev and not ts %}
+{% set ev = a_trier.events %}{% set ts = a_trier.tasks %}{% set pr = a_trier.proposed or [] %}
+{% if not ev and not ts and not pr %}
 <p class="muted empty-state">Rien à trier.</p>
 {% else %}
+{% if pr %}
+<section class="sort-group proposed" aria-labelledby="tri-pr-h">
+  <h2 id="tri-pr-h" class="sec-h">Tâches proposées par tes mails <span class="n">{{ pr|length }}</span></h2>
+  <p class="muted swipe-hint">Elles n'entrent dans tes tâches que si tu les gardes. Glisse à droite pour garder, à gauche pour jeter.</p>
+  <ul class="sort-list">
+    {% for t in pr %}
+    <li class="rowcard taskcard" style="--c: {{ t.color }}" data-swipe data-swipe-done="keep:{{ t.task_id }}" data-swipe-drop="ign:{{ t.task_id }}" data-swipe-yes="✅ Garder" data-swipe-yes-go="✅ Relâche pour garder" data-swipe-no="Jeter 🗑" data-swipe-no-go="Relâche pour jeter 🗑">
+      <h3 class="rtitle"><a href="/taches/{{ t.task_id }}">{{ t.title }}</a></h3>
+      <p class="meta">
+        {% if t.due %}<span class="due">⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% else %}<span>Sans échéance</span>{% endif %}
+        {% if t.minutes %}<span>⏱ {{ t.minutes|dur }}</span>{% endif %}
+      </p>
+      <div class="row-actions">
+        <button type="button" class="primary" data-cb="keep:{{ t.task_id }}" aria-label="Garder : {{ t.title }}"><span aria-hidden="true">✅ </span>Garder</button>
+        <button type="button" data-cb="plan:{{ t.task_id }}" aria-label="Planifier : {{ t.title }}"><span aria-hidden="true">📌 </span>Planifier</button>
+        <button type="button" data-cb="ign:{{ t.task_id }}" aria-label="Jeter : {{ t.title }}">Jeter</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if pr|length > 1 %}<div class="row-actions"><button type="button" data-cb="ignall" data-confirm="Jeter les {{ pr|length }} tâches proposées ?">🗑 Tout jeter</button></div>{% endif %}
+</section>
+{% endif %}
 <div class="sort-cols">
 <section class="sort-group" aria-labelledby="tri-ev-h">
   <h2 id="tri-ev-h" class="sec-h">Rendez-vous détectés <span class="n">{{ ev|length }}</span></h2>

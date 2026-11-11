@@ -22,6 +22,7 @@ log = logging.getLogger("web.data")
 PALETTE = ("#9B8CFF", "#3CC7A6", "#FFA25C", "#5CB8FF", "#F27BC0", "#C7D94B", "#FFD166", "#7FD8E8")
 COURSE = "#55607E"      # cours, rendez-vous
 NO_PROJECT = "#8FA3C8"  # tâche hors projet
+ALERT_TODAY = "#FF5470"  # groupe « Aujourd'hui » de la vue Maintenant
 
 AgendaFn = Callable[[datetime, datetime], list[tuple[datetime, datetime, str]]]
 
@@ -138,6 +139,7 @@ class Ring:
     days_left: int | None
     alert: bool
     alert_line: str | None
+    step: str = ""            # « Étape 3/4 » : plus parlant qu'un pourcentage
 
 
 @dataclass(frozen=True)
@@ -223,8 +225,12 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         prog = projects.progress(p, ms, ptasks, now)
         pct = _percent(prog)
         stall = project_watch.assess(p, ms, ptasks, now)
+        step = ""
+        if prog.total_milestones:
+            step = (f"Étape {min(prog.done_milestones + 1, prog.total_milestones)}/{prog.total_milestones}"
+                    if prog.current is not None else "Étapes finies")
         rings.append(Ring(p.id, p.name, _color(colors, p.id), pct, prog.days_left, stall is not None,
-                          stall.signals[0].line if stall else None))
+                          stall.signals[0].line if stall else None, step))
         suggestions += sum(1 for s in db.list_project_suggestions(p.id) if s.state == "proposed")
 
     open_tasks = [t for t in tasks.values() if t.status in projects.OPEN]
@@ -403,7 +409,7 @@ def focus_rows(sched, now: datetime, limit: int = 30) -> list[FocusRow]:
             for i, r in enumerate(ranked, 1)]
 
 
-FILTERS = ("tout", "retard", "semaine", "sans-projet")
+FILTERS = ("tout", "retard", "semaine", "sans-projet", "faites")
 
 
 @dataclass(frozen=True)
@@ -419,6 +425,10 @@ class TaskRow:
     category: str | None = None   # préfixe `[Esp]` du titre : donne sa couleur et son étiquette à la tâche
     name: str = ""                # titre sans ce préfixe
     step_info: "StepInfo | None" = None   # où en est l'étape de la tâche (page Tâches, groupes par projet)
+    slot: datetime | None = None          # début du prochain créneau planifié
+    project_id: str | None = None
+    project: str = ""                     # nom du projet (vide : sans projet)
+    more: int = 0                         # vue « Maintenant » : autres tâches du projet qui attendent derrière
 
 
 @dataclass(frozen=True)
@@ -457,6 +467,8 @@ class TaskDetail:
     blocks: list[tuple[datetime, datetime]]
     category: str | None = None   # nom (ou code) de la catégorie, préfixe `[Esp]` du titre
     name: str = ""
+    origin_note: str | None = None   # identifiant de la note qui garde le mail d'origine
+    proposed: bool = False           # tâche proposée par un mail, pas encore gardée
 
 
 def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetail | None:
@@ -481,9 +493,38 @@ class TaskGroup:
     project_id: str | None
     rows: list[TaskRow]
     key: str = ""      # clé stable du groupe (état ouvert/replié gardé au rechargement)
+    next: str = ""     # prochaine tâche du projet (affichée sur le groupe replié)
+    open: bool = False  # déplié à l'arrivée (vue « Maintenant »)
 
 
-TRIS = ("projet", "categorie", "date")
+TRIS = ("maintenant", "projet", "categorie", "date")
+
+
+def now_groups(groups: list[TaskGroup], now: datetime) -> list[TaskGroup]:
+    """Vue « Maintenant » : aujourd'hui (créneau ou échéance du jour, retards compris), cette semaine, plus tard.
+    Dans « Plus tard », un projet ne montre que sa prochaine tâche (les autres sont comptées)."""
+    end_today = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    week = now + timedelta(days=7)
+
+    def when(r: TaskRow) -> datetime | None:
+        moments = [m for m in (r.slot, r.due) if m is not None]
+        return min(moments) if moments else None
+
+    today, soon, later = [], [], []
+    for g in groups:
+        rest = []
+        for r in g.rows:                              # déjà dans l'ordre : étape, puis échéance
+            w = when(r)
+            (today if w is not None and w <= end_today else soon if w is not None and w < week else rest).append(r)
+        if g.project_id and rest:
+            later.append(replace(rest[0], more=len(rest) - 1))
+        else:
+            later.extend(rest)
+    by_when = lambda r: (when(r) is None, when(r) or now, r.title)  # noqa: E731
+    out = [TaskGroup("Aujourd'hui", ALERT_TODAY, None, sorted(today, key=by_when), "now:today", open=True),
+           TaskGroup("Cette semaine", COURSE, None, sorted(soon, key=by_when), "now:week", open=True),
+           TaskGroup("Plus tard", NO_PROJECT, None, sorted(later, key=by_when), "now:later", open=not (today or soon))]
+    return [g for g in out if g.rows]
 
 
 def regroup(groups: list[TaskGroup], tri: str, now: datetime) -> list[TaskGroup]:
@@ -504,13 +545,19 @@ def regroup(groups: list[TaskGroup], tri: str, now: datetime) -> list[TaskGroup]
     return out
 
 
-def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "projet") -> tuple[list[TaskGroup], dict[str, int]]:
+def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "maintenant") -> tuple[list[TaskGroup], dict[str, int]]:
     """Tâches ouvertes regroupées par projet (puis « Sans projet »), et le nombre de tâches pour chaque filtre."""
     filtre = filtre if filtre in FILTERS else "tout"
     colors = project_colors(db)
     steps = {m.id: m.title for p in db.list_projects() for m in db.list_milestones(p.id)}
     open_tasks = list(db.list_tasks("pending", "scheduled"))
     names = {p.id: p for p in db.list_projects("active", "paused")}
+    slots: dict[str, datetime] = {}
+    for b in db.list_blocks(open_only=True):          # prochain créneau de chaque tâche, à l'heure locale
+        start = b.start.astimezone(now.tzinfo) if b.start.tzinfo and now.tzinfo else b.start
+        if b.task_id not in slots or start < slots[b.task_id]:
+            slots[b.task_id] = start
+    done = db.list_tasks("done")
 
     def keep(t: Task, f: str) -> bool:
         if f == "retard":
@@ -519,9 +566,16 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "p
             return t.due is not None and now <= t.due < now + timedelta(days=7)
         if f == "sans-projet":
             return t.project_id not in names
-        return True
+        return f != "faites"
 
     counts = {f: sum(1 for t in open_tasks if keep(t, f)) for f in FILTERS}
+    counts["faites"] = len(done)
+    if filtre == "faites":                            # les dernières terminées, pour retrouver ce qui a été fait
+        rows = [replace(task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id)),
+                        project_id=t.project_id if t.project_id in names else None,
+                        project=names[t.project_id].name if t.project_id in names else "")
+                for t in reversed(done[-60:])]
+        return ([TaskGroup("Faites", NO_PROJECT, None, rows, "faites", open=True)] if rows else []), counts
     groups: list[TaskGroup] = []
     for p in list(names.values()) + [None]:
         mine = [t for t in open_tasks if keep(t, filtre)
@@ -537,12 +591,16 @@ def task_groups(db: Database, now: datetime, filtre: str = "tout", tri: str = "p
                 inside = [t for t in live if t.milestone_id == m.id]
                 infos[m.id] = StepInfo(i, len(ms), m.title, sum(1 for t in inside if t.status == "done"), len(inside), m.id == current)
         rows = [replace(task_row(t, now, steps.get(t.milestone_id) if t.milestone_id else None, _color(colors, t.project_id)),
-                        step_info=infos.get(t.milestone_id))
+                        step_info=infos.get(t.milestone_id), slot=slots.get(t.id),
+                        project_id=p.id if p else None, project=p.name if p else "")
                 for t in sorted(mine, key=lambda t: (infos[t.milestone_id].number if t.milestone_id in infos else 999,
                                                      t.due is None, t.due or now, t.title))]
         groups.append(TaskGroup(p.name if p else "Sans projet", _color(colors, p.id) if p else NO_PROJECT,
-                                p.id if p else None, rows, p.id if p else "sans-projet"))
-    return (groups if tri not in TRIS or tri == "projet" else regroup(groups, tri, now)), counts
+                                p.id if p else None, rows, p.id if p else "sans-projet",
+                                next=rows[0].name or rows[0].title if p else ""))
+    if tri == "projet":
+        return groups, counts
+    return (now_groups(groups, now) if tri not in TRIS or tri == "maintenant" else regroup(groups, tri, now)), counts
 
 
 # --- étape 2 : Projets -----------------------------------------------------------------------------------
@@ -691,15 +749,23 @@ class Views:
     def focus(self) -> list[FocusRow]:
         return focus_rows(self.sched, self.now())
 
-    def tasks(self, filtre: str, tri: str = "projet") -> dict:
+    def tasks(self, filtre: str, tri: str = "maintenant") -> dict:
         now = self.now()
         filtre = filtre if filtre in FILTERS else "tout"
-        tri = tri if tri in TRIS else "projet"
+        tri = tri if tri in TRIS else "maintenant"
         groups, counts = task_groups(self.db, now, filtre, tri)
         return {"groups": groups, "counts": counts, "filtre": filtre, "tri": tri, "now": now}
 
     def task(self, task_id: str) -> TaskDetail | None:
-        return task_detail(self.db, task_id, self.now())
+        d = task_detail(self.db, task_id, self.now())
+        if d is None:
+            return None
+        origin = None
+        t = self.db.get_task(task_id)
+        by_source = getattr(self.notes_provider, "by_source", None)
+        if t is not None and by_source and (t.source_id or "").startswith(("gmail:", "insa:")):
+            origin = by_source(t.source_id)           # le mail d'origine, gardé en mémoire
+        return replace(d, origin_note=origin, proposed=self.db.is_proposed(task_id))
 
     def projects(self) -> list[ProjectCard]:
         return project_cards(self.db, self.now())
@@ -726,7 +792,10 @@ class Views:
             return moment.replace(tzinfo=tz) if moment.tzinfo is None else moment.astimezone(tz)
         events = [replace(e, start=local(e.start), end=local(e.end)) for e in event_rows(self.db)]
         tasks = [replace(t, due=local(t.due)) if t.due else t for t in unplanned_tasks(self.db, self.now())]
-        return {"events": events, "tasks": tasks}
+        colors = project_colors(self.db)
+        proposed = [task_row(t, self.now(), None, _color(colors, t.project_id)) for t in self.db.proposed_tasks()]
+        proposed = [replace(t, due=local(t.due)) if t.due else t for t in proposed]
+        return {"events": events, "tasks": tasks, "proposed": proposed}
 
     def suggestions(self) -> dict:
         return suggestions_view(self.db)
@@ -761,7 +830,8 @@ class Views:
         """Pastilles du menu : quelques requêtes, jamais d'exception (menu vide plutôt qu'une page en erreur)."""
         try:
             now = self.now()
-            return {"a_trier": len(self.db.list_events("proposed")) + len(unplanned_tasks(self.db, now)),
+            return {"a_trier": len(self.db.list_events("proposed")) + len(unplanned_tasks(self.db, now))
+                    + len(self.db.proposed_tasks()),
                     "suggestions": self.suggestions()["total"],
                     "taches": len(self.db.list_tasks("pending", "scheduled")),
                     "projets_alerte": any(c.alert for c in project_cards(self.db, now))}
@@ -790,6 +860,13 @@ class MemoryNotes:
         except Exception:  # noqa: BLE001
             log.warning("notes : recherche impossible", exc_info=True)
             return []
+
+    def by_source(self, source: str) -> str | None:
+        try:
+            import memory
+            return memory.doc_id_by_source(source)
+        except Exception:  # noqa: BLE001
+            return None
 
     def get(self, doc_id: str) -> dict | None:
         try:

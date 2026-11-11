@@ -502,7 +502,7 @@ def test_project_detail_header_facts_timeline_loose_suggestions_and_actions():
         tid = next(t.id for t in db.list_project_tasks(p.id) if t.title == "[IA] Entraîner")
         for cb in ("td", "tpo", "tnw"):
             assert f'data-cb="{cb}:{tid}"' not in steps[1], cb
-        assert f'href="/taches/{tid}"' in steps[1] and "<button" not in steps[1]
+        assert f'href="/taches/{tid}"' in steps[1] and steps[1].count("<button") == 1 and 'data-cb="pls:' in steps[1]
         loose = text.split('id="loose-h"')[1]
         assert "Sans étape" in text and "[IA] Vrac" in loose
         for cb in ("add", "plan", "no"):
@@ -534,8 +534,10 @@ def test_tasks_groups_have_stable_keys_for_fold_state():
 
     async def scenario(c):
         await login(c)
-        text = await (await c.get("/taches")).text()
+        text = await (await c.get("/taches?tri=projet")).text()
         assert f'data-gkey="{p.id}"' in text and 'data-gkey="sans-projet"' in text
+        now = await (await c.get("/taches")).text()                    # vue par défaut : « Maintenant »
+        assert 'data-gkey="now:week"' in now and 'data-gkey="now:later"' in now
     run(app, scenario)
 
 
@@ -689,7 +691,7 @@ def test_refreshed_fragments_keep_the_focus_anchors_of_the_page():
             assert (cbs or sid == "taches") and cbs == re.findall(r'data-cb="([^"]+)"', section), url    # mêmes boutons, même ordre
             assert len(set(cbs)) == len(cbs), url                       # chaque data-cb désigne un seul bouton
             assert re.findall(r'data-gkey="([^"]+)"', frag) == re.findall(r'data-gkey="([^"]+)"', section), url
-        taches = await (await c.get("/fragment/taches")).text()
+        taches = await (await c.get("/fragment/taches?tri=projet")).text()
         keys = re.findall(r'data-gkey="([^"]+)"', taches)
         assert "sans-projet" in keys and p.id in keys and not any(k.startswith("t:") for k in keys)
     run(app, scenario)
@@ -769,7 +771,7 @@ def test_tasks_page_shows_step_headings_with_progress():
 
     async def scenario(c):
         await login(c)
-        t = await (await c.get("/fragment/taches")).text()
+        t = await (await c.get("/fragment/taches?tri=projet")).text()
         assert "Étape 1/2" in t and "Étape 2/2" in t and "1/2 faite" in t and "en cours" in t
         assert t.index("Étape 1/2") < t.index(">Reste<") < t.index("Étape 2/2") < t.index(">Plus tard<")
         d = await (await c.get("/fragment/taches?tri=date")).text()
