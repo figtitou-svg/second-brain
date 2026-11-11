@@ -139,6 +139,9 @@ def main() -> None:
         import ingest_gmail
         gmail = ingest_gmail.build_service()
         add("gmail", lambda: log.info("gmail : %d nouveau(x) mail(s)", ingest_gmail.poll(gmail, notify)), 15)
+        import ingest_imap
+        if ingest_imap.config() is not None:            # boîte INSA : seulement si les identifiants sont dans .env
+            add("insa_mail", lambda: log.info("mail INSA : %d nouveau(x) mail(s)", ingest_imap.poll(notify)), 15)
 
     if os.getenv("DRIVE_ENABLED", "true").strip().lower() == "true":
         import drive_sync
