@@ -12,7 +12,10 @@ def box(url, checked):
 
 class Reader:
     def __init__(self, boxes):
-        self.tree = {"page": [{"id": "tog", "type": "heading_3", "has_children": True}], "tog": boxes}
+        self.tree = {"page": [{"id": "tog", "type": "heading_3", "has_children": True},
+                              {"id": "fiche", "type": "child_page", "has_children": True},     # jamais ouverte
+                              {"id": "tab", "type": "table", "has_children": True}],
+                     "tog": boxes, "fiche": [box(V + "change/", False)]}
         self.asked = []
 
     def children(self, block_id):

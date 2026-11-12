@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any, Callable, Protocol
 
 from coach.db import Database
@@ -18,6 +19,9 @@ log = logging.getLogger("notion_checklist")
 API = "https://api.notion.com/v1"
 URL = re.compile(r"https?://[^\s<>\"']+")
 MAX_BLOCKS = 2000
+# blocs qui peuvent contenir des cases ; les sous-pages (fiches), bases et tableaux ne sont pas parcourus
+CONTAINERS = frozenset({"heading_1", "heading_2", "heading_3", "toggle", "column_list", "column", "callout", "quote",
+                        "bulleted_list_item", "numbered_list_item", "to_do", "synced_block"})
 
 
 class BlockReader(Protocol):
@@ -35,7 +39,11 @@ class HttpBlocks:
         cursor = None
         while True:
             params = {"page_size": 100, **({"start_cursor": cursor} if cursor else {})}
-            r = self._c.get(f"/blocks/{block_id}/children", params=params)
+            for attempt in range(4):              # Notion freine (429) : on attend ce qu'il demande, puis on réessaie
+                r = self._c.get(f"/blocks/{block_id}/children", params=params)
+                if r.status_code != 429 or attempt == 3:
+                    break
+                time.sleep(min(float(r.headers.get("Retry-After", "1") or 1), 10))
             r.raise_for_status()
             data = r.json()
             out += data.get("results", [])
@@ -68,7 +76,7 @@ def checked_links(reader: BlockReader, page_id: str) -> dict[str, bool]:
                     href = rt.get("href") or ((rt.get("text") or {}).get("link") or {}).get("url")
                     if href:
                         found[norm(href)] = bool(box.get("checked"))
-            if b.get("has_children"):
+            if b.get("has_children") and b.get("type") in CONTAINERS:   # jamais les sous-pages ni les tableaux
                 todo.append(b["id"])
     return found
 
