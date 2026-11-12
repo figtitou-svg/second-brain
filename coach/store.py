@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
+from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
 from coach.scheduler import CoachScheduler
@@ -57,8 +58,10 @@ def extract_items(text: str, source_id: str, sensitivity: str) -> tuple[list[Tas
     sender = mail_sender(text) if source_id.startswith(MAIL_SOURCES) else None
     # le bot apprend des refus : les dernières tâches de mails ignorées sont données en contre-exemples
     avoid = [f"{title} (mail de {who})" for who, title in db.rejected_mail_tasks()] if sender else []
+    # même chose pour les infos : celles jugées « pas utiles » sont des contre-exemples
+    avoid_infos = [f"{i.title} (mail de {i.sender or '?'})" for i in db.dismissed_infos()] if sender else []
     res = extract.extract_items(text, source_id, sensitivity, projects=ctx or None,  # type: ignore[arg-type]
-                                avoid=avoid or None)
+                                avoid=avoid or None, avoid_infos=avoid_infos or None)
     tasks = dedupe.dedupe_tasks(res.tasks, db.list_tasks())  # ni déjà connue, ni répétée, ni une démarche
     if sender and tasks and sender_muted(db, sender):
         log.info("mail de %s : %d tâche(s) non proposée(s) (expéditeur dont les tâches sont toujours refusées)",
@@ -74,7 +77,12 @@ def extract_items(text: str, source_id: str, sensitivity: str) -> tuple[list[Tas
             project_service.propose(db, t, *hint)
         elif hint:  # déjà dans un projet par sa catégorie : l'IA peut suggérer l'étape
             project_service.propose_step(db, t, *hint)
-    for info in res.infos:                           # à savoir, rien à faire : gardée pour l'onglet Infos
+    new_infos = res.infos
+    if sender and (info_cases.skipped_sender(sender) or db.dismissed_count(sender) >= info_cases.MUTE_AFTER):
+        new_infos = []                               # newsletter, ou expéditeur dont les infos sont jugées inutiles
+    known = db.recent_infos(datetime.now().astimezone() - timedelta(days=30))
+    for info in info_cases.keep(new_infos, known):   # une seule info par mail, jamais deux fois la même
+        info.sender = sender
         db.add_info(info)
     events: list[Event] = []
     known = db.all_events()
@@ -199,6 +207,19 @@ def set_duration(task_id: str, minutes: int) -> str | None:
 def infos_for(source_id: str) -> list:
     """Infos tirées d'une source (un mail) : la notification « ℹ️ Info » les annonce."""
     return _need()[0].infos_for(source_id)
+
+
+def dismiss_info(info_id: str) -> str:
+    """« 👎 Pas utile » : l'info quitte l'onglet et devient un contre-exemple ; après MUTE_AFTER infos inutiles
+    d'un même expéditeur, ses mails ne donnent plus d'info (ils restent en mémoire pour les questions)."""
+    db, _ = _need()
+    info = db.dismiss_info(info_id)
+    if info is None:
+        return "Info introuvable."
+    text = f"👎 Noté : je ne t'enverrai plus ce genre d'info (« {fmt.esc(info.title)} »)."
+    if info.sender and db.dismissed_count(info.sender) >= info_cases.MUTE_AFTER:
+        text += f"\nLes mails de {fmt.esc(info.sender)} ne donnent plus d'info."
+    return text
 
 
 def ignore(task_id: str) -> None:

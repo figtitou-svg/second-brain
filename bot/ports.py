@@ -48,6 +48,7 @@ class CoachPort(Protocol):
     def confirm(self, task_id: str) -> bool: ...          # garder une tâche proposée par un mail
     def ignore_proposed(self) -> int: ...                 # jeter toutes les tâches proposées
     def restore_task(self, task_id: str) -> str: ...      # annuler un « fait » / « ignoré »
+    def dismiss_info(self, info_id: str) -> str: ...      # « 👎 Pas utile » sur une info
     def schedule_step(self, milestone_id: str) -> str: ...
     def report_outcome(self, block_id: str, outcome: str) -> str: ...  # done|not_finished|rescheduled|next_week
     def postpone_task(self, task_id: str, when: str) -> str: ...  # when : tomorrow|next_week|AAAA-MM-JJ
@@ -158,6 +159,9 @@ class CoachAdapter:
 
     def restore_task(self, task_id: str) -> str:
         return self._store.restore_task(task_id)
+
+    def dismiss_info(self, info_id: str) -> str:
+        return self._store.dismiss_info(info_id)
 
     def schedule_step(self, milestone_id: str) -> str:
         return self._store.schedule_step(milestone_id)

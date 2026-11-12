@@ -393,7 +393,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         "a-trier": organisation("a-trier", "a_trier", "a_trier"),
         "suggestions": organisation("suggestions", "suggestions", "suggestions"),
         "notifications": organisation("notifications", "groups", "notifications"),
-        "infos": organisation("infos", "infos", "infos"),
+        "infos": organisation("infos", "infos", "infos", lambda request: (request.query.get("n"),)),
         # requête nettoyée ici (≤ 200 caractères, espaces normalisés) : c'est elle que reprend data-refresh
         "notes": organisation("notes", "notes", "notes", lambda request: (clean_query(request.query.get("q", "")),)),
     }

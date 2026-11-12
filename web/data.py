@@ -722,6 +722,18 @@ def project_detail(db: Database, project_id: str, now: datetime) -> ProjectDetai
 
 # --- étape 2 : ce que lisent les pages ---------------------------------------------------------------------
 
+INFO_PAGE = 20          # l'onglet Infos charge les 20 plus récentes, « Afficher plus » en ajoute 20
+INFO_MAX = 500
+
+
+def info_page_size(raw: object) -> int:
+    """Nombre d'infos à afficher, lu dans l'adresse (?n=) : invalide -> INFO_PAGE, borné à INFO_MAX."""
+    try:
+        n = int(str(raw))
+    except (TypeError, ValueError):
+        return INFO_PAGE
+    return min(max(n, INFO_PAGE), INFO_MAX)
+
 
 class Views:
     """Ce que lisent les pages « Organisation » : une méthode par page, le temps injectable pour les tests."""
@@ -797,19 +809,29 @@ class Views:
         proposed = [replace(t, due=local(t.due)) if t.due else t for t in proposed]
         return {"events": events, "tasks": tasks, "proposed": proposed}
 
-    def infos(self) -> dict:
+    def infos(self, n: object = None) -> dict:
         """Onglet Infos, la plus récente d'abord ; l'ouvrir les marque comme vues (les nouvelles restent signalées
         pendant cet affichage)."""
-        items = self.db.list_infos()
+        from coach import infos as info_cases
+        n = info_page_size(n)
+        items = self.db.list_infos(n + 1)              # une de plus : sait s'il reste des infos à charger
+        more, items = len(items) > n, items[:n]
         by_source = getattr(self.notes_provider, "by_source", None)
         rows = []
         for i in items:
             origin = by_source(i.source_id) if by_source and i.source_id else None
             at = i.created_at.astimezone(self.sched.tz)
-            rows.append({"title": i.title, "detail": i.detail, "day": i.day, "at": at, "new": not i.seen,
-                         "origin": origin, "past": i.day is not None and i.day < self.now().date()})
-        self.db.mark_infos_seen()
-        return {"items": rows}
+            rows.append({"id": i.id, "title": i.title, "detail": i.detail, "day": i.day, "at": at, "new": not i.seen,
+                         "origin": origin, "past": i.day is not None and i.day < self.now().date(),
+                         "category": i.category, "important": i.importance >= 3})
+        cases = []                                   # une case par catégorie, dans l'ordre de coach.infos
+        for cat in info_cases.CATEGORIES:
+            mine = [r for r in rows if r["category"] == cat]
+            if mine:
+                cases.append({"key": cat, "label": info_cases.label(cat), "items": mine,
+                              "new": sum(1 for r in mine if r["new"])})
+        self.db.mark_infos_seen([i.id for i in items])   # seulement celles affichées
+        return {"items": rows, "cases": cases, "n": n, "more": more, "next": n + INFO_PAGE}
 
     def suggestions(self) -> dict:
         return suggestions_view(self.db)

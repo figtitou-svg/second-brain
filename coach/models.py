@@ -34,6 +34,10 @@ class Info(BaseModel):
     source_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now().astimezone())
     seen: bool = False
+    category: str = "perso"          # case : cours, stages, admin, campus, perso (cf. coach.infos)
+    importance: int = Field(default=2, ge=1, le=3)   # 3 = change ce qu'on fait bientôt, 1 = anecdotique
+    sender: str | None = None        # expéditeur du mail : ses infos jugées inutiles l'apprennent au bot
+    dismissed: bool = False          # « 👎 Pas utile » : cachée de l'onglet, sert de contre-exemple
 
 
 class Task(BaseModel):

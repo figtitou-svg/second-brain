@@ -1,20 +1,31 @@
-{# Infos : à savoir, rien à faire. Les plus récentes d'abord ; « Nouveau » jusqu'à la première ouverture de l'onglet.
+{# Infos : à savoir, rien à faire, rangées en cases (cours, stages, admin, campus, perso). Une case avec du nouveau
+   est ouverte ; « Nouveau » jusqu'à la première ouverture de l'onglet. « Pas utile » apprend au bot.
    Titres et précisions échappés. #}
 {% if not infos["items"] %}
 <p class="muted empty-state">Aucune info pour l'instant. Les mails qui annoncent un changement sans rien demander arrivent ici.</p>
 {% else %}
-<ol class="cards infolist">
-  {% for i in infos["items"] %}
-  <li class="rowcard infocard{% if i.new %} new{% endif %}{% if i.past %} past{% endif %}">
-    <p class="meta">
-      {% if i.new %}<span class="tag">Nouveau</span>{% endif %}
-      {% if i.day %}<span class="due">{{ i.day|fr_day }}</span>{% endif %}
-      <span class="muted">reçue {{ i.at|fr_day_short }} {{ i.at|hm }}</span>
-    </p>
-    <h2 class="rtitle">{{ i.title }}</h2>
-    {% if i.detail %}<p class="notebody">{{ i.detail }}</p>{% endif %}
-    {% if i.origin %}<p><a class="applink" href="/notes/{{ i.origin }}">📧 Voir le mail</a></p>{% endif %}
-  </li>
-  {% endfor %}
-</ol>
+{% for c in infos["cases"] %}
+<details class="tgroup infocase"{% if c.new or loop.first %} open{% endif %}>
+  <summary><span class="gname">{{ c.label }}</span> <span class="muted">{{ c["items"]|length }}</span>{% if c.new %} <span class="tag">{{ c.new }} nouvelle{% if c.new > 1 %}s{% endif %}</span>{% endif %}</summary>
+  <ol class="cards infolist">
+    {% for i in c["items"] %}
+    <li class="rowcard infocard{% if i.new %} new{% endif %}{% if i.past %} past{% endif %}{% if i.important %} important{% endif %}">
+      <p class="meta">
+        {% if i.new %}<span class="tag">Nouveau</span>{% endif %}
+        {% if i.important %}<span class="tag">Important</span>{% endif %}
+        {% if i.day %}<span class="due">{{ i.day|fr_day }}</span>{% endif %}
+        <span class="muted">reçue {{ i.at|fr_day_short }} {{ i.at|hm }}</span>
+      </p>
+      <h2 class="rtitle">{{ i.title }}</h2>
+      {% if i.detail %}<p class="notebody">{{ i.detail }}</p>{% endif %}
+      <div class="row-actions">
+        {% if i.origin %}<a class="applink" href="/notes/{{ i.origin }}">📧 Voir le mail</a>{% endif %}
+        <button type="button" data-cb="inon:{{ i.id }}" aria-label="Pas utile : {{ i.title }}"><span aria-hidden="true">👎 </span>Pas utile</button>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</details>
+{% endfor %}
+{% if infos.more %}<p class="loadmore"><a class="button" href="/infos?n={{ infos.next }}">Afficher plus d'infos</a></p>{% endif %}
 {% endif %}

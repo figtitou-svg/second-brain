@@ -389,6 +389,8 @@ class BotService:
                 return Reply(f"🗑 {n} tâche{s} proposée{s} ignorée{s}." if n else "Rien à ignorer.")
             if action == "undo":
                 return Reply(self.coach.restore_task(rest))
+            if action == "inon":
+                return Reply(self.coach.dismiss_info(rest))
             if action == "pls":
                 return Reply(self.coach.schedule_step(rest))
             if action == "dur":

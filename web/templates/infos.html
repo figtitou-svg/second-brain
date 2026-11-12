@@ -3,5 +3,5 @@
 {% block main %}
 <h1>Infos</h1>
 <p class="muted intro">Ce qu'il faut savoir sans rien avoir à faire : séances annulées, salles ou horaires changés…</p>
-<section id="infos" data-refresh="/fragment/infos">{% include "_infos_body.html" %}</section>
+<section id="infos" data-refresh="/fragment/infos{% if infos.n > 20 %}?n={{ infos.n }}{% endif %}">{% include "_infos_body.html" %}</section>
 {% endblock %}

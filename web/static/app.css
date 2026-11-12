@@ -477,6 +477,8 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .taskcard .rtitle a::after{content:"";position:absolute;inset:0;border-radius:var(--radius)}
 .taskcard:hover{filter:brightness(1.08)}
 .taskcard .rtitle a:focus-visible{outline:none}
+/* les boutons et liens posés sur une carte passent AU-DESSUS du lien étiré : ils agissent au lieu d'ouvrir la tâche */
+.taskcard :is(button, .row-actions, .more, a:not(.rtitle a)), .ptask :is(button, .row-actions, a:not(.ptitle a)){position:relative;z-index:1}
 .taskcard:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 
 /* glisser une tâche : fond coloré derrière la carte, plus intense à mesure qu'on avance */
@@ -519,4 +521,9 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .infocard{border-left:4px solid var(--accent)}
 .infocard.new{box-shadow:0 0 0 2px var(--accent) inset}
 .infocard.past{opacity:.7}
+.infocard.important{border-left-color:var(--danger,#d64545)}
+.infocase{margin-bottom:10px}
+.infocase .infolist{margin-top:8px}
+.loadmore{text-align:center;margin:14px 0}
+.loadmore a{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border-radius:999px;border:1px solid var(--line);color:var(--text);text-decoration:none}
 .infocard .rtitle{font-size:16px}

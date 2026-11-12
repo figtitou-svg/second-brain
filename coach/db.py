@@ -178,7 +178,12 @@ class Database:
                     "ALTER TABLE tasks ADD COLUMN milestone_id TEXT",
                     "ALTER TABLE tasks ADD COLUMN description TEXT",
                     # 0 = proposée (à trier), 1 = entrée dans la liste sans tri (avant ce réglage), 2 = gardée
-                    "ALTER TABLE mail_origin ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1"):
+                    "ALTER TABLE mail_origin ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1",
+                    # infos rangées en cases ; les anciennes (avant les cases) : « perso », anecdotiques
+                    "ALTER TABLE infos ADD COLUMN category TEXT NOT NULL DEFAULT 'perso'",
+                    "ALTER TABLE infos ADD COLUMN importance INTEGER NOT NULL DEFAULT 1",
+                    "ALTER TABLE infos ADD COLUMN sender TEXT",
+                    "ALTER TABLE infos ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0"):
             try:
                 self._conn.execute(ddl)
             except sqlite3.OperationalError:  # colonne déjà présente
@@ -207,26 +212,52 @@ class Database:
     # --- infos : à savoir, rien à faire -------------------------------------------------------------------
     def add_info(self, info: Info) -> bool:
         """Enregistre l'info ; False si elle était déjà connue (même source, même titre)."""
-        return self._exec("""INSERT OR IGNORE INTO infos (id, title, detail, day, source_id, created_at, seen)
-                             VALUES (?,?,?,?,?,?,0)""",
+        return self._exec("""INSERT OR IGNORE INTO infos (id, title, detail, day, source_id, created_at, seen,
+                                                          category, importance, sender, dismissed)
+                             VALUES (?,?,?,?,?,?,0,?,?,?,0)""",
                           (info.id, info.title, info.detail, info.day.isoformat() if info.day else None,
-                           info.source_id, info.created_at.isoformat())).rowcount > 0
+                           info.source_id, info.created_at.isoformat(), info.category, info.importance,
+                           info.sender.lower() if info.sender else None)).rowcount > 0
 
     def _info(self, r: sqlite3.Row) -> Info:
         return Info(id=r["id"], title=r["title"], detail=r["detail"], day=date.fromisoformat(r["day"]) if r["day"] else None,
-                    source_id=r["source_id"], created_at=datetime.fromisoformat(r["created_at"]), seen=bool(r["seen"]))
+                    source_id=r["source_id"], created_at=datetime.fromisoformat(r["created_at"]), seen=bool(r["seen"]),
+                    category=r["category"], importance=r["importance"], sender=r["sender"],
+                    dismissed=bool(r["dismissed"]))
 
     def list_infos(self, limit: int = 150) -> list[Info]:
-        return [self._info(r) for r in self._query("SELECT * FROM infos ORDER BY created_at DESC LIMIT ?", (limit,))]
+        """Infos de l'onglet (sans celles jugées « pas utiles »), les plus récentes d'abord."""
+        return [self._info(r) for r in self._query(
+            "SELECT * FROM infos WHERE dismissed = 0 ORDER BY created_at DESC LIMIT ?", (limit,))]
 
     def infos_for(self, source_id: str) -> list[Info]:
         return [self._info(r) for r in self._query("SELECT * FROM infos WHERE source_id=? ORDER BY created_at", (source_id,))]
 
-    def unseen_infos(self) -> int:
-        return self._query("SELECT COUNT(*) AS n FROM infos WHERE seen = 0")[0]["n"]
+    def recent_infos(self, since: datetime) -> list[Info]:
+        """Toutes les infos reçues depuis `since`, même écartées : sert à ne pas recréer une info déjà connue."""
+        return [self._info(r) for r in self._query("SELECT * FROM infos WHERE created_at >= ?", (since.isoformat(),))]
 
-    def mark_infos_seen(self) -> None:
-        self._exec("UPDATE infos SET seen = 1 WHERE seen = 0")
+    def dismiss_info(self, info_id: str) -> Info | None:
+        if not self._exec("UPDATE infos SET dismissed = 1, seen = 1 WHERE id = ?", (info_id,)).rowcount:
+            return None
+        return self._info(self._query("SELECT * FROM infos WHERE id = ?", (info_id,))[0])
+
+    def dismissed_infos(self, limit: int = 12) -> list[Info]:
+        return [self._info(r) for r in self._query(
+            "SELECT * FROM infos WHERE dismissed = 1 ORDER BY created_at DESC LIMIT ?", (limit,))]
+
+    def dismissed_count(self, sender: str) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM infos WHERE dismissed = 1 AND sender = ?", (sender.lower(),))[0]["n"]
+
+    def unseen_infos(self) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM infos WHERE seen = 0 AND dismissed = 0")[0]["n"]
+
+    def mark_infos_seen(self, ids: list[str] | None = None) -> None:
+        """Marque vues les infos `ids` (celles affichées) ; toutes si `ids` est None."""
+        if ids is None:
+            self._exec("UPDATE infos SET seen = 1 WHERE seen = 0")
+        elif ids:
+            self._exec(f"UPDATE infos SET seen = 1 WHERE seen = 0 AND id IN ({','.join('?' * len(ids))})", tuple(ids))
 
     def confirm_task(self, task_id: str) -> bool:
         """« Garder » : la tâche proposée entre dans la liste. True si elle attendait."""

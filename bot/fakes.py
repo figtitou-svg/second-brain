@@ -103,6 +103,10 @@ class FakeCoach:
         self.calls.append(("ignore_proposed",))
         return 0
 
+    def dismiss_info(self, info_id: str) -> str:
+        self.calls.append(("dismiss_info", info_id))
+        return f"👎 Noté : {info_id}"
+
     def restore_task(self, task_id: str) -> str:
         self.calls.append(("restore", task_id))
         self.tasks[task_id].status = "pending"

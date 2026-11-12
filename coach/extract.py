@@ -49,9 +49,19 @@ SYSTEM_PROMPT = (
     '{"tasks":[{"title":str,"do_on":"AAAA-MM-JJ"|null,"due":ISO8601|null,"estimated_minutes":int,'
     '"priority":"low"|"medium"|"high","description":str|null,"confidence":0..1}],'
     '"events":[{"title":str,"start":ISO8601,"end":ISO8601|null,"location":str|null,"confidence":0..1}],'
-    '"infos":[{"title":str,"detail":str|null,"day":"AAAA-MM-JJ"|null,"confidence":0..1}]}. '
-    "Une info : title = l'info en quelques mots (« TD de POO annulé mardi »), detail = la précision utile, "
+    '"infos":[{"title":str,"detail":str|null,"day":"AAAA-MM-JJ"|null,'
+    '"category":"cours"|"stages"|"admin"|"campus"|"perso","importance":1|2|3,"confidence":0..1}]}. '
+    "AU PLUS UNE info par texte : elle résume tout le mail. title = l'essentiel en quelques mots simples "
+    "(« TD de POO annulé mardi », « DS d'info jeudi : règles de l'examen ») ; detail = une ou deux phrases en mots "
+    "simples qui expliquent tout ce qu'il faut retenir (où, quand, quoi apporter, ce qui change) ; "
     "day = le jour concerné s'il y en a un. "
+    "category : cours = cours, TD, examens, notes ; stages = stages, jobs, offres d'emploi ; admin = scolarité, "
+    "inscriptions, bourses, logement, assurance ; campus = vie de l'école, associations, événements ; perso = le reste. "
+    "importance : 3 = change ce que l'utilisateur fait bientôt (cours annulé ou déplacé, salle ou consignes "
+    "d'examen, date limite administrative) ; 2 = utile à savoir ; 1 = anecdotique. "
+    "AUCUNE info (infos vide) pour : newsletter, lettre d'information ou communication envoyée à toute l'école, "
+    "publicité ou promo, pied de page (contact, désinscription, données personnelles, mentions légales), "
+    "notification d'un compte ou d'une appli (connexion, données partagées, série en danger, nouveau post). "
     "description = 1 à 3 phrases de contexte utiles tirées du texte (consignes, lieu, pièces à fournir), sinon null. "
     "Mets end à null si la durée n'est pas donnée. Listes vides si rien. "
     "Fuseau Europe/Paris. Aucun texte hors JSON. "
@@ -108,7 +118,18 @@ class ExtractedInfo(BaseModel):
     title: str = Field(min_length=1)
     detail: str | None = None
     day: date | None = None
+    category: str | None = None
+    importance: int = 2
     confidence: float = Field(default=1.0, ge=0, le=1)
+
+    @field_validator("importance", mode="before")
+    @classmethod
+    def _importance(cls, v: Any) -> int:
+        """Importance hors échelle ou illisible : ramenée entre 1 et 3 (2 par défaut), l'info n'est pas perdue."""
+        try:
+            return min(3, max(1, int(v)))
+        except (TypeError, ValueError):
+            return 2
 
 
 class ExtractionResponse(BaseModel):
@@ -127,8 +148,10 @@ class Extraction:
 
 
 def _build_infos(items: list[ExtractedInfo], source_id: str) -> list[Info]:
+    from coach import infos as info_cases
     return [Info(id=_task_id(source_id, "info|" + it.title), title=it.title.strip(),
-                 detail=(it.detail or "").strip() or None, day=it.day, source_id=source_id)
+                 detail=(it.detail or "").strip() or None, day=it.day, source_id=source_id,
+                 category=info_cases.category(it.category), importance=it.importance)
             for it in items if it.confidence >= MIN_CONFIDENCE]
 
 DEFAULT_EVENT_MINUTES = 60
@@ -263,6 +286,7 @@ def extract_items(
     now: datetime | None = None,
     projects: list[dict] | None = None,
     avoid: list[str] | None = None,
+    avoid_infos: list[str] | None = None,
 ) -> Extraction:
     """Extrait tâches et événements de `text`. Vide si l'extraction échoue deux fois.
 
@@ -275,6 +299,8 @@ def extract_items(
         key += ":p" + hashlib.sha256(json.dumps(projects, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
     if avoid:     # les refus récents font partie de la clé : un nouveau refus doit changer la réponse
         key += ":a" + hashlib.sha256("\n".join(avoid).encode()).hexdigest()[:12]
+    if avoid_infos:
+        key += ":i" + hashlib.sha256("\n".join(avoid_infos).encode()).hexdigest()[:12]
 
     cached = cache.get(key)
     if cached is not None:
@@ -299,6 +325,10 @@ def extract_items(
         prompt = ("Tâches tirées de mails que l'utilisateur a REFUSÉES récemment (il les a ignorées) : ne propose "
                   "PAS de tâche du même genre ; s'il n'y a rien d'autre, laisse tasks vide.\n"
                   f"{refus}\n\n{prompt}")
+    if avoid_infos:
+        inutiles = "\n".join(f"- {a}" for a in avoid_infos)
+        prompt = ("Infos que l'utilisateur a jugées PAS UTILES récemment : ne crée PAS d'info du même genre ; "
+                  f"s'il n'y a rien d'autre, laisse infos vide.\n{inutiles}\n\n{prompt}")
     if projects:
         prompt = f"{_projects_block(projects)}\n\n{prompt}"
         system = SYSTEM_PROMPT + PROJECT_RULES
