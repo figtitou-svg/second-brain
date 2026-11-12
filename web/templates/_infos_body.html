@@ -1,0 +1,20 @@
+{# Infos : à savoir, rien à faire. Les plus récentes d'abord ; « Nouveau » jusqu'à la première ouverture de l'onglet.
+   Titres et précisions échappés. #}
+{% if not infos["items"] %}
+<p class="muted empty-state">Aucune info pour l'instant. Les mails qui annoncent un changement sans rien demander arrivent ici.</p>
+{% else %}
+<ol class="cards infolist">
+  {% for i in infos["items"] %}
+  <li class="rowcard infocard{% if i.new %} new{% endif %}{% if i.past %} past{% endif %}">
+    <p class="meta">
+      {% if i.new %}<span class="tag">Nouveau</span>{% endif %}
+      {% if i.day %}<span class="due">{{ i.day|fr_day }}</span>{% endif %}
+      <span class="muted">reçue {{ i.at|fr_day_short }} {{ i.at|hm }}</span>
+    </p>
+    <h2 class="rtitle">{{ i.title }}</h2>
+    {% if i.detail %}<p class="notebody">{{ i.detail }}</p>{% endif %}
+    {% if i.origin %}<p><a class="applink" href="/notes/{{ i.origin }}">📧 Voir le mail</a></p>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}

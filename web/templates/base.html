@@ -23,7 +23,7 @@
   (None, [("Accueil", "🏠", "/")]),
   ("Organisation", [("Agenda", "📅", "/agenda"), ("Focus", "🎯", "/focus"), ("Tâches", "☑️", "/taches"),
                     ("Projets", "🍩", "/projets"), ("Récap semaine", "📊", "/semaine")]),
-  ("À traiter", [("À trier", "📥", "/a-trier"), ("Suggestions", "💡", "/suggestions"),
+  ("À traiter", [("À trier", "📥", "/a-trier"), ("Infos", "ℹ️", "/infos"), ("Suggestions", "💡", "/suggestions"),
                  ("Notifications", "🔔", "/notifications")]),
   ("Mémoire", [("Discussion", "💬", "/discussion"), ("Notes et documents", "🗒️", "/notes")]),
   ("Coulisses", [("Système", "🖥️", "/systeme")]),
@@ -31,6 +31,7 @@
 {# pastilles : clé de Views.badges() et libellé lu par les lecteurs d'écran (singulier, pluriel) #}
 {% set counted = {"/a-trier": ("a_trier", "à trier", "à trier"),
                   "/suggestions": ("suggestions", "suggestion", "suggestions"),
+                  "/infos": ("infos", "nouvelle info", "nouvelles infos"),
                   "/taches": ("taches", "tâche ouverte", "tâches ouvertes")} %}
 {% if csrf %}
 <button class="menu-toggle" type="button" aria-controls="nav" aria-expanded="false" aria-label="Ouvrir le menu">☰</button>

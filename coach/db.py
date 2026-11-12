@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from coach.models import Block, Event, Milestone, Project, Suggestion, Task
+from coach.models import Block, Event, Info, Milestone, Project, Suggestion, Task
 
 DEFAULT_DB_PATH = Path("data") / "coach.sqlite"
 
@@ -132,6 +132,15 @@ CREATE TABLE IF NOT EXISTS mail_origin (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mail_origin_sender ON mail_origin(sender);
+CREATE TABLE IF NOT EXISTS infos (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  detail TEXT,
+  day TEXT,
+  source_id TEXT,
+  created_at TEXT NOT NULL,
+  seen INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -194,6 +203,30 @@ class Database:
         """Tâche tirée d'un mail : elle attend dans « À trier » (confirmed=0) tant qu'elle n'est pas gardée."""
         self._exec("INSERT OR IGNORE INTO mail_origin (task_id, sender, created_at, confirmed) VALUES (?,?,?,0)",
                    (task_id, sender.lower(), when.isoformat()))
+
+    # --- infos : à savoir, rien à faire -------------------------------------------------------------------
+    def add_info(self, info: Info) -> bool:
+        """Enregistre l'info ; False si elle était déjà connue (même source, même titre)."""
+        return self._exec("""INSERT OR IGNORE INTO infos (id, title, detail, day, source_id, created_at, seen)
+                             VALUES (?,?,?,?,?,?,0)""",
+                          (info.id, info.title, info.detail, info.day.isoformat() if info.day else None,
+                           info.source_id, info.created_at.isoformat())).rowcount > 0
+
+    def _info(self, r: sqlite3.Row) -> Info:
+        return Info(id=r["id"], title=r["title"], detail=r["detail"], day=date.fromisoformat(r["day"]) if r["day"] else None,
+                    source_id=r["source_id"], created_at=datetime.fromisoformat(r["created_at"]), seen=bool(r["seen"]))
+
+    def list_infos(self, limit: int = 150) -> list[Info]:
+        return [self._info(r) for r in self._query("SELECT * FROM infos ORDER BY created_at DESC LIMIT ?", (limit,))]
+
+    def infos_for(self, source_id: str) -> list[Info]:
+        return [self._info(r) for r in self._query("SELECT * FROM infos WHERE source_id=? ORDER BY created_at", (source_id,))]
+
+    def unseen_infos(self) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM infos WHERE seen = 0")[0]["n"]
+
+    def mark_infos_seen(self) -> None:
+        self._exec("UPDATE infos SET seen = 1 WHERE seen = 0")
 
     def confirm_task(self, task_id: str) -> bool:
         """« Garder » : la tâche proposée entre dans la liste. True si elle attendait."""

@@ -514,3 +514,9 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .more-line a{color:var(--muted)}
 .donecard{opacity:.75}
 .sort-group.proposed{margin-bottom:18px}
+
+/* Infos : à savoir, rien à faire */
+.infocard{border-left:4px solid var(--accent)}
+.infocard.new{box-shadow:0 0 0 2px var(--accent) inset}
+.infocard.past{opacity:.7}
+.infocard .rtitle{font-size:16px}

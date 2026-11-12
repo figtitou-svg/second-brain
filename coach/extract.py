@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from coach.models import Event, Priority, Task
+from coach.models import Event, Info, Priority, Task
 
 log = logging.getLogger("coach.extract")
 
@@ -34,9 +34,12 @@ DURATION_RULES = (
 )
 
 SYSTEM_PROMPT = (
-    "Tu extrais d'un texte (1) les TÂCHES à faire par l'utilisateur, sans heure imposée, et (2) les "
-    "ÉVÉNEMENTS : rendez-vous, cours, réunions, matchs, soirées... qui ont une date/heure ou un lieu précis. "
-    "Un événement n'est JAMAIS une tâche : ne le mets pas dans tasks. "
+    "Tu extrais d'un texte (1) les TÂCHES à faire par l'utilisateur, sans heure imposée, (2) les "
+    "ÉVÉNEMENTS : rendez-vous, cours, réunions, matchs, soirées... qui ont une date/heure ou un lieu précis, et "
+    "(3) les INFOS : ce qu'il faut savoir mais qui ne demande AUCUNE action (séance ou cours annulé, cours en "
+    "distanciel, salle ou horaire changé, report, absence d'un prof, rappel d'une règle). "
+    "Un événement n'est JAMAIS une tâche : ne le mets pas dans tasks. Une info n'est JAMAIS une tâche : "
+    "« la séance de mardi est annulée » donne une info, pas de tâche ni d'événement. "
     "Ne crée PAS de tâche pour remplir/compléter ses informations ou son profil, ni pour répondre, accepter "
     "ou décliner une invitation. Un texte donne en général UNE seule tâche : ne découpe pas en sous-étapes, "
     "ne répète pas la même tâche sous deux formulations, et mets une liste vide si rien n'est vraiment à faire. "
@@ -45,7 +48,10 @@ SYSTEM_PROMPT = (
     "Réponds UNIQUEMENT avec un JSON de la forme "
     '{"tasks":[{"title":str,"do_on":"AAAA-MM-JJ"|null,"due":ISO8601|null,"estimated_minutes":int,'
     '"priority":"low"|"medium"|"high","description":str|null,"confidence":0..1}],'
-    '"events":[{"title":str,"start":ISO8601,"end":ISO8601|null,"location":str|null,"confidence":0..1}]}. '
+    '"events":[{"title":str,"start":ISO8601,"end":ISO8601|null,"location":str|null,"confidence":0..1}],'
+    '"infos":[{"title":str,"detail":str|null,"day":"AAAA-MM-JJ"|null,"confidence":0..1}]}. '
+    "Une info : title = l'info en quelques mots (« TD de POO annulé mardi »), detail = la précision utile, "
+    "day = le jour concerné s'il y en a un. "
     "description = 1 à 3 phrases de contexte utiles tirées du texte (consignes, lieu, pièces à fournir), sinon null. "
     "Mets end à null si la durée n'est pas donnée. Listes vides si rien. "
     "Fuseau Europe/Paris. Aucun texte hors JSON. "
@@ -98,9 +104,17 @@ class ExtractedEvent(BaseModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
 
 
+class ExtractedInfo(BaseModel):
+    title: str = Field(min_length=1)
+    detail: str | None = None
+    day: date | None = None
+    confidence: float = Field(default=1.0, ge=0, le=1)
+
+
 class ExtractionResponse(BaseModel):
     tasks: list[ExtractedTask] = Field(default_factory=list)
     events: list[ExtractedEvent] = Field(default_factory=list)
+    infos: list[ExtractedInfo] = Field(default_factory=list)
 
 
 @dataclass
@@ -109,6 +123,13 @@ class Extraction:
     events: list[Event]
     # id de tâche -> (nom de projet, titre d'étape) proposés par l'IA ; vide sans projets
     hints: dict[str, tuple[str | None, str | None]] = field(default_factory=dict)
+    infos: list[Info] = field(default_factory=list)
+
+
+def _build_infos(items: list[ExtractedInfo], source_id: str) -> list[Info]:
+    return [Info(id=_task_id(source_id, "info|" + it.title), title=it.title.strip(),
+                 detail=(it.detail or "").strip() or None, day=it.day, source_id=source_id)
+            for it in items if it.confidence >= MIN_CONFIDENCE]
 
 DEFAULT_EVENT_MINUTES = 60
 
@@ -259,9 +280,11 @@ def extract_items(
     if cached is not None:
         items = [ExtractedTask.model_validate(d) for d in cached]
         ev_raw = cache.get(key + ":ev") or []
+        inf_raw = cache.get(key + ":inf") or []
         return Extraction(_build(items, source_id, now),
                           _build_events([ExtractedEvent.model_validate(d) for d in ev_raw], source_id),
-                          _hints(items, source_id) if projects else {})
+                          _hints(items, source_id) if projects else {},
+                          _build_infos([ExtractedInfo.model_validate(d) for d in inf_raw], source_id))
 
     complete = llm or _resolve_llm()
     jours = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
@@ -299,5 +322,6 @@ def extract_items(
 
     cache.put(key, [t.model_dump(mode="json") for t in response.tasks])
     cache.put(key + ":ev", [e.model_dump(mode="json") for e in response.events])
+    cache.put(key + ":inf", [i.model_dump(mode="json") for i in response.infos])
     return Extraction(_build(response.tasks, source_id, now), _build_events(response.events, source_id),
-                      _hints(response.tasks, source_id) if projects else {})
+                      _hints(response.tasks, source_id) if projects else {}, _build_infos(response.infos, source_id))

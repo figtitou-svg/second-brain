@@ -74,6 +74,8 @@ def extract_items(text: str, source_id: str, sensitivity: str) -> tuple[list[Tas
             project_service.propose(db, t, *hint)
         elif hint:  # déjà dans un projet par sa catégorie : l'IA peut suggérer l'étape
             project_service.propose_step(db, t, *hint)
+    for info in res.infos:                           # à savoir, rien à faire : gardée pour l'onglet Infos
+        db.add_info(info)
     events: list[Event] = []
     known = db.all_events()
     for e in res.events:
@@ -192,6 +194,11 @@ def set_duration(task_id: str, minutes: int) -> str | None:
         db.delete_block(b.id)
     db.set_task_status(task_id, "pending")
     return schedule(task_id)
+
+
+def infos_for(source_id: str) -> list:
+    """Infos tirées d'une source (un mail) : la notification « ℹ️ Info » les annonce."""
+    return _need()[0].infos_for(source_id)
 
 
 def ignore(task_id: str) -> None:

@@ -25,6 +25,17 @@ ProjectStatus = Literal["active", "paused", "done"]
 MilestoneStatus = Literal["open", "done"]
 
 
+class Info(BaseModel):
+    """Information à connaître, sans rien à faire (séance annulée, salle changée…) : ni tâche ni rendez-vous."""
+    id: str
+    title: str = Field(min_length=1)
+    detail: str | None = None
+    day: date | None = None          # jour concerné, s'il y en a un
+    source_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now().astimezone())
+    seen: bool = False
+
+
 class Task(BaseModel):
     id: str = Field(default_factory=new_id)
     title: str = Field(min_length=1)

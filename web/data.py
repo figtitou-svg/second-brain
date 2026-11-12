@@ -797,6 +797,20 @@ class Views:
         proposed = [replace(t, due=local(t.due)) if t.due else t for t in proposed]
         return {"events": events, "tasks": tasks, "proposed": proposed}
 
+    def infos(self) -> dict:
+        """Onglet Infos, la plus récente d'abord ; l'ouvrir les marque comme vues (les nouvelles restent signalées
+        pendant cet affichage)."""
+        items = self.db.list_infos()
+        by_source = getattr(self.notes_provider, "by_source", None)
+        rows = []
+        for i in items:
+            origin = by_source(i.source_id) if by_source and i.source_id else None
+            at = i.created_at.astimezone(self.sched.tz)
+            rows.append({"title": i.title, "detail": i.detail, "day": i.day, "at": at, "new": not i.seen,
+                         "origin": origin, "past": i.day is not None and i.day < self.now().date()})
+        self.db.mark_infos_seen()
+        return {"items": rows}
+
     def suggestions(self) -> dict:
         return suggestions_view(self.db)
 
@@ -834,6 +848,7 @@ class Views:
                     + len(self.db.proposed_tasks()),
                     "suggestions": self.suggestions()["total"],
                     "taches": len(self.db.list_tasks("pending", "scheduled")),
+                    "infos": self.db.unseen_infos(),
                     "projets_alerte": any(c.alert for c in project_cards(self.db, now))}
         except Exception:  # noqa: BLE001
             log.warning("pastilles du menu illisibles", exc_info=True)

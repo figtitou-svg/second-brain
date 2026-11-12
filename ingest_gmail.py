@@ -43,6 +43,14 @@ def process_mail(text: str, subject: str, source: str, notify: Notify) -> None:
         notify(card, buttons)
     for e in events:  # extrait d'un mail : on demande avant d'écrire dans l'agenda
         notify(fmt.event_card(e, "📧 <b>Rendez-vous dans un mail</b>"), event_buttons(e.id))
+    try:
+        infos = store.infos_for(source)
+    except Exception:  # noqa: BLE001 - une info manquée ne doit jamais faire retraiter le mail
+        log.warning("infos du mail %s illisibles", source, exc_info=True)
+        infos = []
+    for i in infos:   # à savoir, rien à faire : un message sans bouton, et l'onglet Infos du site
+        when = f" · {fmt.day_short(i.day)}" if i.day else ""
+        notify(f"ℹ️ <b>Info</b>{when} : {fmt.esc(i.title)}" + (f"\n{fmt.esc(i.detail)}" if i.detail else ""), None)
 
 
 def poll(service: Any, notify: Notify, query: str = "in:inbox newer_than:2d") -> int:

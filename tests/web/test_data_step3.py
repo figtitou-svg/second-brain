@@ -124,7 +124,7 @@ def test_badges_count_what_waits_for_the_user():
     db.upsert_task(Task(title="Planifiée", status="scheduled"))
     db.add_event_if_new(Event(title="RDV", start=dt(2026, 10, 30, 9), end=dt(2026, 10, 30, 10)))
     db.save_suggestions([Suggestion(batch="b1", project_id=p.id, title="Idée", created_at=NOW)])
-    assert v.badges() == {"a_trier": 2, "suggestions": 1, "taches": 2, "projets_alerte": True}
+    assert v.badges() == {"a_trier": 2, "suggestions": 1, "taches": 2, "infos": 0, "projets_alerte": True}
 
 
 def test_badges_never_raise():
