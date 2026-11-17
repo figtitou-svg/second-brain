@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from coach import work_quota
 from coach.models import Block, Task
 from coach.rules import DAYS, Rules
 
@@ -95,7 +96,7 @@ def plan_detailed(
     result = PlanResult()
     used: dict[date, int] = dict(already_used or {})
     cap = rules.max_focus_minutes_per_day
-    max_b, min_b = rules.max_block_minutes, rules.min_block_minutes
+    max_rule, min_rule = rules.max_block_minutes, rules.min_block_minutes
 
     def lead_start(task: Task, due: datetime) -> datetime | None:
         """Début de la fenêtre de la tâche (« échéance - délai selon sa durée »), None si elle n'en a pas."""
@@ -110,6 +111,7 @@ def plan_detailed(
         if use_lead and (lead := lead_start(task, due)) is not None:  # pas trop tôt pour sa complexité
             start_from = max(start_from, lead)
         remaining = task.estimated_minutes
+        min_b, max_b = work_quota.block_limits(task) or (min_rule, max_rule)   # heures de job : 1 h à 1 h 30
         day = start_from.date()
         while remaining > 0 and day <= due.date():
             hours = (
@@ -118,7 +120,7 @@ def plan_detailed(
             win = (max(_at(day, hours.start, tz), start_from), min(_at(day, hours.end, tz), due))
             day_cuts = list(cuts)
             for b in rules.blocked:
-                if DAYS.index(b.day) == day.weekday():
+                if DAYS.index(b.day) == day.weekday() and not work_quota.skips_blocked(task, b.label):
                     day_cuts.append((_at(day, b.from_, tz) - buf, _at(day, b.to, tz) + buf))
             free = _subtract(win, day_cuts) if win[0] < win[1] else []
             for fs, fe in free:
@@ -152,6 +154,7 @@ def plan_detailed(
     def place(task: Task, due: datetime, use_lead: bool) -> int:
         remaining = task.estimated_minutes
         # d'abord un seul bloc (une tâche = une ligne dans l'agenda) ; on ne découpe qu'à défaut
+        max_b = (work_quota.block_limits(task) or (min_rule, max_rule))[1]
         for allow_split in ((False, True) if task.estimated_minutes <= max_b else (True,)):
             n_cuts, n_blocks, snapshot = len(cuts), len(result.blocks), dict(used)
             remaining = attempt(task, due, allow_split, use_lead)

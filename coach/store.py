@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
-from coach import agenda_rules
+from coach import agenda_rules, work_quota
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -209,6 +209,18 @@ def set_duration(task_id: str, minutes: int) -> str | None:
 def infos_for(source_id: str) -> list:
     """Infos tirées d'une source (un mail) : la notification « ℹ️ Info » les annonce."""
     return _need()[0].infos_for(source_id)
+
+
+def ensure_work_quota() -> int:
+    """Crée et place les heures de job de la semaine (et de la suivante) si elles n'existent pas encore.
+    Retourne le nombre de tâches créées."""
+    db, sched = _need()
+    new = work_quota.due_tasks({t.id for t in db.list_tasks()}, sched.now())
+    if new:
+        res = sched.schedule_tasks(new)
+        for t in new:
+            log.info("heures de job : « %s » créée (%d min non placées)", t.title, res.unplaced.get(t.id, 0))
+    return len(new)
 
 
 def hide_course(title: str) -> str:

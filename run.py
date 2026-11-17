@@ -134,6 +134,7 @@ def main() -> None:
     add("journal", journal.flush_pending, 10)                     # renvoie les notes en attente vers Google Docs
     add("projects", lambda: store.projects_idle_check(notify), 15)  # propose la suite des projets sans tâche ouverte
     add("pwatch", lambda: store.projects_watch(notify), 30)         # prévient d'un projet qui stagne ou dont le rendu approche
+    add("job_hours", store.ensure_work_quota, 60)                   # 10 h / semaine pour Franck : créées et placées
 
     if not args.no_gmail:
         import ingest_gmail
