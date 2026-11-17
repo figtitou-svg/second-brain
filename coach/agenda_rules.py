@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, time, timedelta
+from typing import Callable
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Europe/Paris")
@@ -36,8 +37,26 @@ _KINDS = (
 )
 
 
+_extra: Callable[[], set[str]] | None = None   # cours masqués depuis l'agenda (lus dans la base)
+
+
+def set_hidden_source(fn: Callable[[], set[str]] | None) -> None:
+    global _extra
+    _extra = fn
+
+
 def is_hidden(title: str) -> bool:
-    return bool(HIDDEN.search(title.strip()))
+    t = title.strip()
+    if HIDDEN.search(t):
+        return True
+    try:
+        return _extra is not None and t in _extra()
+    except Exception:  # noqa: BLE001 - base illisible : le cours reste affiché, rien ne casse
+        return False
+
+
+def is_recurring(title: str) -> bool:
+    return any(title == r[0] for r in RECURRING)
 
 
 def kind_of(title: str) -> str:

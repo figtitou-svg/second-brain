@@ -146,6 +146,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     env.filters["dur"] = fmt.dur                                         # « 2 h 30 »
     env.filters["hm"] = _hm
     env.globals["agenda_legend"] = [(agenda_rules.LABELS[k], v) for k, v in agenda_rules.COLORS.items()]
+    env.globals["agenda_recurring"] = agenda_rules.is_recurring
     env.filters["agenda_label"] = lambda title: agenda_rules.LABELS[agenda_rules.kind_of(title)]  # « TD », « Sport »…
     discussion = actions.Discussion()
     fails: list[float] = []

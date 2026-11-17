@@ -253,6 +253,8 @@ class AgendaItem:
     lane: int = 0
     lanes: int = 1
     block_id: str | None = None   # seulement pour un bloc ouvert (boutons Fait / Reporter)
+    task_id: str | None = None    # bloc : sa tâche (fiche de l'agenda : reporter, ouvrir la tâche)
+    from_mail: bool = False       # rendez-vous tiré d'un mail
 
 
 @dataclass(frozen=True)
@@ -310,23 +312,27 @@ def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
     tasks = {t.id: t for t in db.list_tasks()}
     items: list[AgendaItem] = []
 
-    def add(kind: str, title: str, color: str, s: datetime, e: datetime, block_id: str | None = None) -> None:
+    def add(kind: str, title: str, color: str, s: datetime, e: datetime, block_id: str | None = None,
+            task_id: str | None = None, from_mail: bool = False) -> None:
         s2, e2 = max(s, ws), min(e, we)
         if e2 <= s2:
             return
         top = _pct(s2, ws, we)
         items.append(AgendaItem(kind, title, color, s, e, round(top, 2), round(_pct(e2, ws, we) - top, 2),
-                                block_id=block_id))
+                                block_id=block_id, task_id=task_id, from_mail=from_mail))
 
     for b in db.list_blocks():
         t = tasks.get(b.task_id)
         if t is None or b.outcome not in (None, "done"):
             continue
-        add("block", t.title, _color(colors, t.project_id), b.start, b.end, b.id if b.outcome is None else None)
+        add("block", t.title, _color(colors, t.project_id), b.start, b.end, b.id if b.outcome is None else None,
+            task_id=t.id)
     for e in db.list_events("added"):
-        add("event", e.title, agenda_rules.color_of(e.title), e.start, e.end)
+        add("event", e.title, agenda_rules.color_of(e.title), e.start, e.end,
+            from_mail=(e.source_id or "").startswith(("gmail:", "insa:")))
     for s, e, title in agenda.get(ws, we):
-        add("course", title, agenda_rules.color_of(title), s, e)
+        if not agenda_rules.is_hidden(title):   # masqué depuis l'agenda : effet immédiat malgré le cache Google
+            add("course", title, agenda_rules.color_of(title), s, e)
     dues = [DueItem(t.title, t.due, _color(colors, t.project_id), t.id)
             for t in sorted(tasks.values(), key=lambda t: t.due or ws)
             if t.status in projects.OPEN and t.due is not None and t.due.astimezone(sched.tz).date() == day]

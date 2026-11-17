@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
+from coach import agenda_rules
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -23,6 +24,7 @@ _sched: CoachScheduler | None = None
 def configure(db: Database, scheduler: CoachScheduler) -> None:
     global _db, _sched, _interview
     _db, _sched = db, scheduler
+    agenda_rules.set_hidden_source(db.hidden_courses)   # « Masquer ce cours » : agenda et planification
     _interview = None
 
 
@@ -207,6 +209,17 @@ def set_duration(task_id: str, minutes: int) -> str | None:
 def infos_for(source_id: str) -> list:
     """Infos tirées d'une source (un mail) : la notification « ℹ️ Info » les annonce."""
     return _need()[0].infos_for(source_id)
+
+
+def hide_course(title: str) -> str:
+    """« Masquer ce cours » : toutes ses séances disparaissent de l'agenda et leurs heures deviennent libres."""
+    _need()[0].hide_course(title)
+    return f"🙈 <b>{fmt.esc(title)}</b> est masqué : ses séances n'apparaissent plus et ces heures sont libres."
+
+
+def unhide_course(title: str) -> str:
+    _need()[0].unhide_course(title)
+    return f"👀 <b>{fmt.esc(title)}</b> réapparaît dans l'agenda."
 
 
 def dismiss_info(info_id: str) -> str:

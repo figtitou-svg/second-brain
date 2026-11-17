@@ -70,3 +70,30 @@ def test_google_client_hides_courses_and_adds_rugby():
     assert [t for _, _, t in c.agenda(s, e)] == ["BDR · TP", "Rugby"]
     busy = sorted((a.hour, b.hour) for a, b in c.freebusy(s, e))
     assert busy == [(11, 12), (14, 16), (18, 20)]          # CM du matin libre ; SPE remplacé par le rugby
+
+
+def test_hide_course_from_agenda_and_undo():
+    from bot.fakes import FakeMemory, FakeRouter
+    from bot.handlers import BotService
+    from bot.ports import CoachAdapter
+    from coach import store
+    from coach.calendar_client import FakeCalendarClient
+    from coach.db import Database
+    from coach.rules import load_rules
+    from coach.scheduler import CoachScheduler
+    from tests.coach.conftest import FROZEN
+    db = Database(":memory:")
+    store.configure(db, CoachScheduler(db, FakeCalendarClient(), load_rules(FROZEN), lambda t, b: None))
+    try:
+        svc = BotService(CoachAdapter(), FakeMemory(), FakeRouter("x"), 1)
+        assert not ar.is_hidden("BDR · TD")
+        r = svc.on_callback("hidec:BDR · TD")
+        assert "masqué" in r.text and r.buttons == [[("↩ Annuler", "unhidec:BDR · TD")]]
+        assert ar.is_hidden("BDR · TD") and not ar.is_hidden("BDR · TP")      # seulement ce cours-là
+        c = GoogleCalendarClient(_Svc(), "primary")
+        s, e = datetime(2026, 11, 18, tzinfo=TZ), datetime(2026, 11, 19, tzinfo=TZ)
+        svc.on_callback("hidec:BDR · TP")
+        assert [t for _, _, t in c.agenda(s, e)] == ["Rugby"] and (14, 16) not in [(a.hour, b.hour) for a, b in c.freebusy(s, e)]
+        assert "réapparaît" in svc.on_callback("unhidec:BDR · TD").text and not ar.is_hidden("BDR · TD")
+    finally:
+        ar.set_hidden_source(None)

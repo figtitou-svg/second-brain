@@ -618,5 +618,76 @@
     if (document.visibilityState === "hidden") { es?.close(); es = null; }
     else if (!es) { live(); catchUp(); }      // flux rouvert d'abord : rien ne tombe entre la relecture et lui
   });
+
+  // --- Agenda : toucher un créneau ouvre une fiche (ce que c'est, et quoi faire) -----------------------------
+  // Tâche : Fait / Reporter / Demain / Semaine prochaine / ouvrir ; cours : masquer (avec Annuler) ; échéance :
+  // repousser. Les boutons sont des [data-cb] ordinaires : le clic global les envoie, puis la fiche se ferme.
+  let sheetEl = null;
+  function sheetButton(label, cb, primary) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.dataset.cb = cb;
+    if (primary) b.className = "primary";
+    return b;
+  }
+  function openSheet(src) {
+    const d = src.dataset;
+    if (!sheetEl) {
+      sheetEl = document.createElement("dialog");
+      sheetEl.className = "sheet";
+      sheetEl.setAttribute("aria-labelledby", "sheet-title");
+      document.body.append(sheetEl);
+      sheetEl.addEventListener("click", (ev) => {
+        if (ev.target === sheetEl || ev.target.closest(".sheet-close")) { sheetEl.close(); return; }
+        if (ev.target.closest("[data-cb], a[href]")) setTimeout(() => sheetEl.open && sheetEl.close(), 0);
+      });
+    }
+    sheetEl.replaceChildren();
+    const h = document.createElement("h2"); h.id = "sheet-title"; h.textContent = d.title || "";
+    const meta = document.createElement("p"); meta.className = "muted";
+    meta.textContent = [d.when, d.type].filter(Boolean).join(" · ");
+    const bar = document.createElement("span"); bar.className = "sheet-bar";
+    bar.style.background = getComputedStyle(src).getPropertyValue("--c") || "var(--accent)";
+    sheetEl.append(bar, h, meta);
+    if (d.mail) {
+      const p = document.createElement("p"); p.className = "muted"; p.textContent = "Rendez-vous tiré d'un mail.";
+      sheetEl.append(p);
+    }
+    const acts = document.createElement("div"); acts.className = "row-actions sheet-actions";
+    if (d.block) {
+      acts.append(sheetButton("✅ Fait", "ok:" + d.block, true), sheetButton("⏭ Reporter (replacer plus tard)", "rep:" + d.block));
+    }
+    if (d.task && (d.block || d.kind === "due")) {
+      acts.append(sheetButton("📅 Demain", "tpo:" + d.task), sheetButton("🗓 Semaine prochaine", "tnw:" + d.task));
+    }
+    if (d.hide) acts.append(sheetButton("🙈 Masquer ce cours", "hidec:" + d.hide));
+    if (d.task) {
+      const a = document.createElement("a"); a.className = "button"; a.href = "/taches/" + encodeURIComponent(d.task);
+      a.textContent = "Ouvrir la tâche"; acts.append(a);
+    }
+    if (acts.children.length) sheetEl.append(acts);
+    const x = document.createElement("button"); x.type = "button"; x.className = "sheet-close"; x.textContent = "Fermer";
+    sheetEl.append(x);
+    sheetEl.showModal();
+  }
+  document.addEventListener("click", (ev) => {
+    const src = ev.target.closest("[data-sheet]");
+    if (!src || ev.target.closest("button, a, input") || ev.defaultPrevented) return;
+    openSheet(src);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches?.("[data-sheet]")) { ev.preventDefault(); openSheet(ev.target); }
+  });
+
+  // --- Agenda sur téléphone : la barre du bas s'efface quand on descend, revient quand on remonte ------------
+  const bottomBar = document.querySelector("nav.bottom");
+  if (bottomBar) {
+    let lastY = window.scrollY;
+    window.addEventListener("scroll", () => {
+      const y = window.scrollY, onAgenda = !!document.getElementById("agenda");
+      const away = onAgenda && y > lastY + 4 && y > 80;
+      if (away || y < lastY - 4 || !onAgenda) bottomBar.classList.toggle("away", away);
+      lastY = y;
+    }, {passive: true});
+  }
   if (document.visibilityState !== "hidden") live();
 })();

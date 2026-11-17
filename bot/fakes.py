@@ -103,6 +103,14 @@ class FakeCoach:
         self.calls.append(("ignore_proposed",))
         return 0
 
+    def hide_course(self, title: str) -> str:
+        self.calls.append(("hide_course", title))
+        return f"🙈 {title}"
+
+    def unhide_course(self, title: str) -> str:
+        self.calls.append(("unhide_course", title))
+        return f"👀 {title}"
+
     def dismiss_info(self, info_id: str) -> str:
         self.calls.append(("dismiss_info", info_id))
         return f"👎 Noté : {info_id}"

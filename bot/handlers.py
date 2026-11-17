@@ -391,6 +391,10 @@ class BotService:
                 return Reply(self.coach.restore_task(rest))
             if action == "inon":
                 return Reply(self.coach.dismiss_info(rest))
+            if action == "hidec":     # agenda : masquer un cours (toutes ses séances)
+                return Reply(self.coach.hide_course(rest), [[("↩ Annuler", f"unhidec:{rest}")]])
+            if action == "unhidec":
+                return Reply(self.coach.unhide_course(rest))
             if action == "pls":
                 return Reply(self.coach.schedule_step(rest))
             if action == "dur":

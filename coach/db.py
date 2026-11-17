@@ -141,6 +141,10 @@ CREATE TABLE IF NOT EXISTS infos (
   created_at TEXT NOT NULL,
   seen INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS hidden_courses (
+  title TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
 """
 
 
@@ -258,6 +262,17 @@ class Database:
             self._exec("UPDATE infos SET seen = 1 WHERE seen = 0")
         elif ids:
             self._exec(f"UPDATE infos SET seen = 1 WHERE seen = 0 AND id IN ({','.join('?' * len(ids))})", tuple(ids))
+
+    # --- cours masqués depuis l'agenda (« Masquer ce cours ») ----------------------------------------------
+    def hide_course(self, title: str) -> bool:
+        return self._exec("INSERT OR IGNORE INTO hidden_courses (title, created_at) VALUES (?,?)",
+                          (title.strip(), datetime.now().astimezone().isoformat())).rowcount > 0
+
+    def unhide_course(self, title: str) -> bool:
+        return self._exec("DELETE FROM hidden_courses WHERE title = ?", (title.strip(),)).rowcount > 0
+
+    def hidden_courses(self) -> set[str]:
+        return {r["title"] for r in self._query("SELECT title FROM hidden_courses")}
 
     def confirm_task(self, task_id: str) -> bool:
         """« Garder » : la tâche proposée entre dans la liste. True si elle attendait."""

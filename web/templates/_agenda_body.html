@@ -22,8 +22,11 @@
     </div>
   </div>
 </div>
-<ul class="legend" aria-label="Couleurs">{% for label, color in agenda_legend %}<li style="--c: {{ color }}">{{ label }}</li>{% endfor %}<li style="--c: var(--accent)">Tâches (couleur du projet)</li></ul>
+<div class="legend agenda-legend muted" aria-label="Couleurs">{% for label, color in agenda_legend %}<span><i style="background: {{ color }}"></i>{{ label }}</span>{% endfor %}<span><i style="background: var(--accent)"></i>Tâches (couleur du projet)</span></div>
 
+{# fiche ouverte au toucher (app.js) : ce que c'est, et les actions possibles #}
+{% macro sheet(it, tz) %} data-sheet data-title="{{ it.title }}" data-when="{{ it.start|fr_day_short }} · {{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}" data-type="{{ 'Tâche planifiée' if it.kind == 'block' else it.title|agenda_label }}{% if it.kind == 'block' and not it.block_id %} · faite{% endif %}" data-kind="{{ it.kind }}" data-block="{{ it.block_id or '' }}" data-task="{{ it.task_id or '' }}" data-hide="{{ it.title if it.kind == 'course' and not agenda_recurring(it.title) else '' }}"{% if it.from_mail %} data-mail="1"{% endif %}{% endmacro %}
+{% macro due_sheet(du, tz) %} data-sheet data-title="{{ du.title }}" data-when="{{ du.at|fr_day_short }} · échéance {{ du.at|hm(tz) }}" data-type="Échéance" data-kind="due" data-task="{{ du.task_id }}"{% endmacro %}
 {% macro actions(it) %}{% if it.block_id %}<span class="actions"><button type="button" data-cb="ok:{{ it.block_id }}">✅ Fait</button><button type="button" data-cb="rep:{{ it.block_id }}">⏭ Reporter</button></span>{% endif %}{% endmacro %}
 
 {% if semaine %}
@@ -41,9 +44,9 @@
       {% for du in d.dues %}{% set ns.rows = ns.rows + [(du.at|hm(tz), 1, loop.index, du)] %}{% endfor %}
       {% for at, due, _i, x in ns.rows|sort %}
       {% if due %}
-      <li class="chip due" style="--c: {{ x.color }}"><span class="time">⚑ {{ at }}</span><span class="name">{{ x.title }}</span></li>
+      <li class="chip due" style="--c: {{ x.color }}" role="button" tabindex="0"{{ due_sheet(x, tz) }}><span class="time">⚑ {{ at }}</span><span class="name">{{ x.title }}</span></li>
       {% else %}
-      <li class="chip {{ x.kind }}" style="--c: {{ x.color }}"><span class="time">{{ at }}</span><span class="name">{{ x.title }}</span></li>
+      <li class="chip {{ x.kind }}" style="--c: {{ x.color }}" role="button" tabindex="0"{{ sheet(x, tz) }}><span class="time">{{ at }}</span><span class="name">{{ x.title }}</span></li>
       {% endif %}
       {% endfor %}
     </ul>
@@ -64,7 +67,7 @@
     {% if v.window_start <= h <= v.window_end %}<div class="hour" style="top: {{ ((h - v.window_start).total_seconds() * 100 / total)|round(2) }}%"><span>{{ h|hm }}</span></div>{% endif %}
     {% endfor %}
     {% for it in v.items %}
-    <div class="slot {{ it.kind }}" style="--c: {{ it.color }}; top: {{ it.top }}%; height: {{ it.height }}%; --lane: {{ it.lane }}; --lanes: {{ it.lanes }}">
+    <div class="slot {{ it.kind }}" style="--c: {{ it.color }}; top: {{ it.top }}%; height: {{ it.height }}%; --lane: {{ it.lane }}; --lanes: {{ it.lanes }}"{{ sheet(it, tz) }}>
       <span class="time">{{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}</span> <span class="name">{{ it.title }}</span></div>
     {% endfor %}
     {% if agenda.day == agenda.today and agenda.now and v.window_start <= agenda.now <= v.window_end %}
@@ -78,7 +81,7 @@
       {% if v.items %}
       <ul class="agenda-list">
         {% for it in v.items|sort(attribute="start") %}
-        <li class="{{ it.kind }}" style="--c: {{ it.color }}">
+        <li class="{{ it.kind }}" style="--c: {{ it.color }}" role="button" tabindex="0"{{ sheet(it, tz) }}>
           <span class="time">{{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}</span>
           <span class="name">{{ it.title }}</span>
           <small class="muted">{{ KIND[it.kind] if it.kind == "block" else it.title|agenda_label }}{% if it.kind == "block" and not it.block_id %} · fait{% endif %}</small>
@@ -92,7 +95,7 @@
     {% if v.dues %}
     <section aria-labelledby="dues-h"><h3 id="dues-h">Échéances du jour</h3>
       <ul class="agenda-list dues">
-        {% for du in v.dues %}<li style="--c: {{ du.color }}"><span class="time">⚑ {{ du.at|hm(tz) }}</span><span class="name">{{ du.title }}</span></li>{% endfor %}
+        {% for du in v.dues %}<li style="--c: {{ du.color }}" role="button" tabindex="0"{{ due_sheet(du, tz) }}><span class="time">⚑ {{ du.at|hm(tz) }}</span><span class="name">{{ du.title }}</span></li>{% endfor %}
       </ul>
     </section>
     {% endif %}
