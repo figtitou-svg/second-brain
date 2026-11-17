@@ -172,3 +172,18 @@ def test_private_sources_skipped_when_local_model_missing(monkeypatch, tmp_path)
     monkeypatch.setattr(router, "complete", fake_complete)
     ans = memory.ask("quel est le code porte garage ?", context="Date et heure actuelles : x")
     assert calls == ["private", "public"] and "ignorées" in ans.text
+
+
+def test_old_google_auth_failure_cleared_once_google_works_again(tmp_path):
+    import health as hm
+    sent = []
+    h = hm.Health(lambda t, b=None: sent.append(t), path=tmp_path / "h.json")
+
+    class RefreshError(Exception):
+        pass
+    h.fail("gmail", RefreshError("invalid_grant"))
+    assert any(c.component == "google_auth" and not c.ok for c in h.snapshot())
+    h.ok("gmail")                                                    # Gmail répond : l'autorisation va bien
+    assert all(c.ok for c in h.snapshot() if c.component == "google_auth")
+    assert any("fonctionne de nouveau" in t for t in sent)
+    assert {"insa_mail", "stakes", "job_hours", "notion_cases"} <= {c.component for c in h.snapshot()}

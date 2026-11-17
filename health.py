@@ -20,9 +20,13 @@ TZ = ZoneInfo("Europe/Paris")
 STATE = Path("data") / "health.json"
 HEARTBEAT = Path("data") / "heartbeat"
 RUNNING = Path("data") / "running"
-LABELS = {"gmail": "Gmail", "drive": "Drive", "notion": "Notion", "coach": "Agenda / relances",
-          "llm": "Modèles IA", "bot": "Bot Telegram", "google_auth": "Autorisation Google",
-          "projects": "Assistant de projet", "pwatch": "Surveillance des projets"}
+LABELS = {"gmail": "Gmail", "insa_mail": "Mail INSA", "drive": "Drive", "notion": "Notion",
+          "notion_cases": "Cases Notion (Security+)", "coach": "Agenda / relances", "llm": "Modèles IA",
+          "stakes": "Importance des tâches (IA)", "job_hours": "Heures de job (Franck)", "journal": "Journal (Google Docs)",
+          "bot": "Bot Telegram", "google_auth": "Autorisation Google", "projects": "Assistant de projet",
+          "pwatch": "Surveillance des projets"}
+# services qui passent par l'autorisation Google : s'ils marchent, elle n'est plus en panne
+GOOGLE_JOBS = frozenset({"gmail", "drive", "coach"})
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,8 @@ class Health:
 
     def ok(self, component: str) -> None:
         self.last_ok[component] = self._now()
+        if component in GOOGLE_JOBS and component != "google_auth":
+            self.ok("google_auth")              # Google répond : une ancienne panne d'autorisation est réglée
         with self._lock:
             st = self._state.pop(component, None)
             if st is None:
