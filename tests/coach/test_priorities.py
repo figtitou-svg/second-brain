@@ -79,3 +79,40 @@ def test_job_hours_are_agenda_only():
     s.tick(blk.end + timedelta(minutes=1))
     assert not any("C'est fait" in t for t, _ in sent)
     assert next(b for b in db.list_blocks() if b.id == blk.id).outcome == "done"
+
+
+def test_project_proposes_first_open_task_of_current_step_not_the_exam():
+    from coach.models import Milestone
+    db, s = sched_env()
+    p = Project(name="Security+")
+    db.save_project(p)
+    d2 = Milestone(project_id=p.id, title="Domaine 2", position=1)
+    d3 = Milestone(project_id=p.id, title="Domaine 3", position=2)
+    fin = Milestone(project_id=p.id, title="Entraînement final et examen", position=5)
+    for m in (d2, d3, fin):
+        db.save_milestone(m)
+    exam = Task(title="[Sec+] Passer l'examen Security+", project_id=p.id, milestone_id=fin.id, estimated_minutes=120)
+    t24 = Task(title="[Sec+] 2.4 · Malwares (1/2)", project_id=p.id, milestone_id=d2.id, estimated_minutes=120)
+    t23 = Task(title="[Sec+] 2.3 · Vulnérabilités (1/2)", project_id=p.id, milestone_id=d2.id, estimated_minutes=105)
+    t31 = Task(title="[Sec+] 3.1 · Architecture", project_id=p.id, milestone_id=d3.id, estimated_minutes=30)
+    cha = Task(title="[Cha] Vente gâteaux")
+    for t in (exam, t24, t23, t31, cha):
+        db.upsert_task(t)
+    db.set_stakes(exam.id, 5, "certification", pr.stakes_key(exam))
+    dom = next(d for d in s.domains(NOW) if d.name == "Security+")
+    assert dom.top.task.id == t23.id                                  # 2.3 avant 2.4, l'examen en dernier
+    assert [r.task.id for r in dom.rest] == [t24.id, t31.id, exam.id]
+
+
+def test_step_without_numbering_takes_shortest_first():
+    from coach.models import Milestone
+    db, s = sched_env()
+    p = Project(name="Cyber")
+    db.save_project(p)
+    m = Milestone(project_id=p.id, title="Attaque", position=0)
+    db.save_milestone(m)
+    long_ = Task(title="[Cyber] Notion : Reverse shell", project_id=p.id, milestone_id=m.id, estimated_minutes=90)
+    short = Task(title="[Cyber] Notion : DNS", project_id=p.id, milestone_id=m.id, estimated_minutes=20)
+    for t in (long_, short):
+        db.upsert_task(t)
+    assert next(d for d in s.domains(NOW) if d.name == "Cyber").top.task.id == short.id

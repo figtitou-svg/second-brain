@@ -407,8 +407,15 @@ class CoachScheduler:
 
     def domains(self, now: datetime | None = None) -> list[priorities.Domain]:
         """Une tâche par domaine (projet ou catégorie), domaines triés par importance."""
-        names = {p.id: p.name for p in self.db.list_projects("active", "paused")}
-        return priorities.domains(self.ranking(now), names)
+        live = self.db.list_projects("active", "paused")
+        names = {p.id: p.name for p in live}
+        ranked = self.ranking(now)
+        order: dict[str, tuple] = {}
+        for p in live:                                 # projets à étapes : avancer dans l'ordre du programme
+            positions = {m.id: m.position for m in self.db.list_milestones(p.id)}
+            if positions:
+                order.update(priorities.plan_order([r.task for r in ranked if r.task.project_id == p.id], positions))
+        return priorities.domains(ranked, names, order)
 
     def focus_buttons(self, now: datetime | None = None) -> list[list[tuple[str, str]]]:
         return focus.focus_buttons(self.ranking(now))

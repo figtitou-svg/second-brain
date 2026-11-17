@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable
@@ -130,8 +131,12 @@ class Domain:
         return self.top.score
 
 
-def domains(ranked: list[focus.Ranked], project_names: dict[str, str]) -> list[Domain]:
-    """Une entrée par domaine, avec sa tâche la plus importante ; domaines triés par importance."""
+def domains(ranked: list[focus.Ranked], project_names: dict[str, str],
+            order: dict[str, tuple] | None = None) -> list[Domain]:
+    """Une entrée par domaine ; domaines triés par l'importance de la tâche proposée.
+    Hors projet (catégorie, Divers) : la tâche la plus importante. Dans un projet dont `order` donne l'ordre de
+    travail (étapes) : la PREMIÈRE tâche non faite, pas l'objectif final (passer l'examen vient en dernier)."""
+    order = order or {}
     out: dict[str, Domain] = {}
     for r in ranked:                                     # déjà triées : la première vue d'un domaine est sa tête
         t = r.task
@@ -145,4 +150,34 @@ def domains(ranked: list[focus.Ranked], project_names: dict[str, str]) -> list[D
             out[key].rest.append(r)
         else:
             out[key] = Domain(key, name, pid, cat, r)
+    for d in out.values():
+        if d.project_id and any(x.task.id in order for x in [d.top, *d.rest]):
+            seq = sorted([d.top, *d.rest], key=lambda x: order.get(x.task.id, (10_001,)))
+            d.top, d.rest = seq[0], seq[1:]                # l'étape en cours d'abord, dans l'ordre du programme
     return sorted(out.values(), key=lambda d: -d.score)
+
+
+_NUM = re.compile(r"\d+")
+
+
+def _numbers(title: str) -> tuple[int, ...]:
+    """Numéros du titre, préfixe [Cat] ôté : « 2.3 · Vulnérabilités (1/2) » -> (2, 3, 1, 2)."""
+    m = focus.SUBJECT_RE.match(title)
+    return tuple(int(n) for n in _NUM.findall(title[m.end():] if m else title))
+
+
+def plan_order(tasks: list[Task], positions: dict[str, int]) -> dict[str, tuple]:
+    """Ordre dans lequel faire les tâches d'UN projet : étape par étape (position), puis, dans l'étape, l'ordre
+    des numéros si toutes les tâches en ont (« 2.3 », « (1/2) », « Machine 6/13 »), sinon la plus courte d'abord.
+    Les tâches sans étape passent après les étapes. `positions` : id d'étape -> rang."""
+    steps: dict[str | None, list[Task]] = {}
+    for t in tasks:
+        steps.setdefault(t.milestone_id if t.milestone_id in positions else None, []).append(t)
+    out: dict[str, tuple] = {}
+    for mid, mine in steps.items():
+        pos = positions[mid] if mid is not None else 10_000
+        numbered = all(_numbers(t.title) for t in mine)
+        for i, t in enumerate(mine):
+            inner = (_numbers(t.title), i) if numbered else ((), t.estimated_minutes, i)
+            out[t.id] = (pos, inner)
+    return out
