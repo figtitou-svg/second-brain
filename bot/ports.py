@@ -36,6 +36,7 @@ class CoachPort(Protocol):
 
     def extract_items(self, text: str, source_id: str, sensitivity: Sensitivity) -> tuple[list[Any], list[Any]]: ...
     def add_event(self, event_id: str) -> str: ...
+    def add_task(self, text: str, sensitivity: Sensitivity) -> list[Any]: ...   # « /task … »
     def ignore_event(self, event_id: str) -> str: ...
     def list_open_tasks(self) -> list[Any]: ...
     def today_agenda(self) -> str: ...
@@ -122,6 +123,9 @@ class CoachAdapter:
     def extract_items(self, text: str, source_id: str, sensitivity: Sensitivity) -> tuple[list[Any], list[Any]]:
         # le store persiste les tâches (sinon « Planifier » ne retrouverait pas l'id)
         return self._store.extract_items(text, source_id, sensitivity)
+
+    def add_task(self, text: str, sensitivity: Sensitivity) -> list[Any]:
+        return self._store.add_task(text, sensitivity)
 
     def add_event(self, event_id: str) -> str:
         return self._store.add_event(event_id)

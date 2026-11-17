@@ -36,12 +36,13 @@ COMMANDS: list[tuple[str, str]] = [
     ("ask", "Poser une question à ta mémoire (documents, notes, agenda)"),
     ("today", "Agenda et tâches du jour"),
     ("replan", "Refaire tout le planning (urgent d'abord)"),
-    ("focus", "Tes 3 priorités du moment, avec la raison de chacune"),
+    ("focus", "Tes priorités : une tâche par domaine, la plus importante d'abord"),
     ("projet", "Créer un projet : je t'interroge pour le définir"),
     ("projets", "Avancement de tes projets"),
     ("annuler", "Abandonner l'entretien de projet en cours"),
     ("tasks", "Tâches ouvertes, avec boutons fait / reporter / semaine prochaine"),
     ("semaine", "Récap de la semaine"),
+    ("task", "Ajouter une tâche : /task [Cha] recontacter PE avant vendredi"),
     ("note", "Garder une info telle quelle (ni tâche ni rendez-vous)"),
     ("done", "Marquer une tâche terminée : /done identifiant"),
     ("quota", "Consommation des API IA gratuites du jour"),
@@ -144,6 +145,28 @@ class BotService:
             return ""
 
     # --- entrées ---
+    def task(self, text: str) -> list[Reply]:
+        """« /task … » : ajoute la tâche écrite après (catégorie, date et durée comprises), puis la place si elle
+        n'a pas de date. Sans texte : comment s'en servir."""
+        text = text.strip()
+        if not text:
+            return [Reply("✍️ Écris la tâche après /task, par exemple :\n"
+                          "<code>/task recontacter PE pour le partenariat chaps avant vendredi</code>")]
+        try:
+            tasks = self.coach.add_task(text, _note_sensitivity())
+        except NotReadyError as exc:
+            return [Reply(f"⚠️ Coach indisponible ({fmt.esc(exc)}).")]
+        replies = []
+        for t in tasks:
+            card = self._task_card(t, "➕ <b>Tâche ajoutée</b>")
+            if getattr(t, "due", None) is None and getattr(t, "not_before", None) is None:
+                try:  # sans date, rien n'attend : on la place tout de suite (le bouton Planifier reste pour replacer)
+                    card.text += "\n" + self.coach.schedule(str(t.id))
+                except Exception:  # noqa: BLE001 - la carte et ses boutons restent, planifiable à la main
+                    log.exception("planification automatique impossible pour %s", t.id)
+            replies.append(card)
+        return replies
+
     def note(self, text: str, source: str = "note") -> list[Reply]:
         """Garde une information telle quelle : ni tâche, ni rendez-vous, ni extraction."""
         text = text.strip()
@@ -585,6 +608,11 @@ class TelegramHandlers:
         if not self._allowed(update) or not update.message:
             return
         await self._send(update, await asyncio.to_thread(self.service.today))
+
+    async def task(self, update: Any, context: Any) -> None:
+        if not self._allowed(update) or not update.message:
+            return
+        await self._send(update, await asyncio.to_thread(self.service.task, " ".join(context.args or [])))
 
     async def note(self, update: Any, context: Any) -> None:
         if not self._allowed(update) or not update.message:

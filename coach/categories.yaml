@@ -1,0 +1,39 @@
+# Catégories de tâches (préfixe du titre, ex. « [Cha] Mail aux alumni ») et les mots qui les désignent.
+# Quand un message parle d'un de ces mots (« rajoute dans chaps… »), la tâche reçoit le préfixe : elle se range dans
+# son domaine (couleur, priorités). Complète à ta guise : code (tel qu'écrit entre crochets), nom, surnoms.
+Cha:
+  name: CHAPS (association de rugby)
+  aliases: [chaps, chap's, chapsettes, asso rugby, association de rugby]
+Esp:
+  name: Espagnol
+  aliases: [espagnol, cours d'espagnol]
+Ang:
+  name: Anglais
+  aliases: [anglais, cours d'anglais]
+Fra:
+  name: Franck (Nomana IT)
+  aliases: [franck, nomana]
+Job:
+  name: Job, candidatures, Compagnons
+  aliases: [job, compagnons]
+Per:
+  name: Perso
+  aliases: [perso, personnel, administratif perso]
+Cyber:
+  name: Cyber
+  aliases: [cyber, cybersécurité, hack the box, htb]
+Sec+:
+  name: Security+
+  aliases: [security+, security plus, sec+, comptia]
+Alg:
+  name: Algorithmique
+  aliases: [algo, algorithmique]
+Pro:
+  name: Programmation
+  aliases: [programmation, prog]
+BDE:
+  name: BDE
+  aliases: [bde]
+EPS:
+  name: EPS
+  aliases: [eps]

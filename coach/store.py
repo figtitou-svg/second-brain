@@ -4,12 +4,13 @@
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
-from coach import agenda_rules, priorities, work_quota
+from coach import agenda_rules, categories, priorities, work_quota
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -62,8 +63,11 @@ def extract_items(text: str, source_id: str, sensitivity: str) -> tuple[list[Tas
     avoid = [f"{title} (mail de {who})" for who, title in db.rejected_mail_tasks()] if sender else []
     # même chose pour les infos : celles jugées « pas utiles » sont des contre-exemples
     avoid_infos = [f"{i.title} (mail de {i.sender or '?'})" for i in db.dismissed_infos()] if sender else []
+    cats = categories.known(db)                     # « rajoute dans chaps … » -> « [Cha] … »
     res = extract.extract_items(text, source_id, sensitivity, projects=ctx or None,  # type: ignore[arg-type]
-                                avoid=avoid or None, avoid_infos=avoid_infos or None)
+                                avoid=avoid or None, avoid_infos=avoid_infos or None, categories=cats)
+    if not sender and len(res.tasks) == 1:          # ce que l'utilisateur écrit lui-même : surnom dans le texte
+        res.tasks[0].title = categories.prefixed(res.tasks[0].title, categories.guess(text, cats))
     tasks = dedupe.dedupe_tasks(res.tasks, db.list_tasks())  # ni déjà connue, ni répétée, ni une démarche
     if sender and tasks and sender_muted(db, sender):
         log.info("mail de %s : %d tâche(s) non proposée(s) (expéditeur dont les tâches sont toujours refusées)",
@@ -227,6 +231,32 @@ def rate_stakes() -> int:
         return 0
     names = {p.id: p.name for p in db.list_projects()}
     return priorities.rate(db, _stakes_llm, db.list_tasks("pending", "scheduled"), names, sched.now())
+
+
+def add_task(text: str, sensitivity: str) -> list[Task]:
+    """« /task … » : crée la tâche écrite (date, durée et catégorie comprises par l'IA ; si elle n'en voit pas,
+    le texte devient la tâche telle quelle). Jamais de rendez-vous ni d'info : c'est une tâche demandée."""
+    db, sched = _need()
+    cats = categories.known(db)
+    source = "task:" + hashlib.sha256(f"{text}|{sched.now().isoformat()}".encode()).hexdigest()[:12]
+    try:
+        res = extract.extract_items(f"Tâche à ajouter (une seule) : {text}", source, sensitivity,  # type: ignore[arg-type]
+                                    projects=project_service.extraction_context(db) or None, categories=cats)
+        found = res.tasks[:1]
+    except Exception:  # noqa: BLE001 - IA indisponible : la tâche est créée telle quelle, rien n'est perdu
+        log.warning("/task : extraction impossible, tâche créée telle quelle", exc_info=True)
+        res, found = None, []
+    if not found:
+        title = text.strip()
+        found = [Task(title=title[:1].upper() + title[1:], source_id=source)]
+    t = found[0]
+    t.title = categories.prefixed(t.title, categories.guess(text, cats))
+    t = project_service.attach_by_category(db, t)
+    db.upsert_task(t)
+    hint = res.hints.get(t.id) if res else None
+    if hint and not t.project_id:
+        project_service.propose(db, t, *hint)
+    return [t]
 
 
 def ensure_work_quota() -> int:

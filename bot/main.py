@@ -66,6 +66,7 @@ def build_application(config: Config, service: BotService | None = None) -> Any:
     app.add_handler(CommandHandler("annuler", h.annuler, filters=only_me))
     app.add_handler(CommandHandler("semaine", h.week, filters=only_me))
     app.add_handler(CommandHandler("quota", h.quota, filters=only_me))
+    app.add_handler(CommandHandler("task", h.task, filters=only_me))
     app.add_handler(CommandHandler("note", h.note, filters=only_me))
     app.add_handler(CommandHandler("done", h.done, filters=only_me))
     app.add_handler(CommandHandler(["help", "start"], h.help, filters=only_me))

@@ -79,6 +79,12 @@ PROJECT_RULES = (
     "sinon project = null et milestone = null."
 )
 
+CATEGORY_RULES = (
+    ' Si une tâche relève clairement d\'une des catégories listées (le texte la nomme, par son nom ou un de ses '
+    'surnoms, ou en parle sans ambiguïté), ajoute à cette tâche "category" : le code EXACT de la catégorie ; sinon '
+    'category = null. N\'écris pas le code dans title.'
+)
+
 LLMFn = Callable[..., str]
 
 
@@ -92,8 +98,9 @@ class ExtractedTask(BaseModel):
     project: str | None = None    # nom d'un projet actif, si la tâche lui appartient clairement
     milestone: str | None = None  # titre d'une de ses étapes ouvertes
     description: str | None = None  # 1 à 3 phrases de contexte tirées du texte (consignes, lieu, pièces…)
+    category: str | None = None     # code d'une catégorie de l'utilisateur (« Cha ») : préfixe « [Cha] » du titre
 
-    @field_validator("project", "milestone", "description", mode="before")
+    @field_validator("project", "milestone", "description", "category", mode="before")
     @classmethod
     def _hint_text(cls, v: Any) -> str | None:
         """Un indice de rattachement mal formé (False, 0, {}…) est ignoré : il ne doit pas faire perdre la tâche."""
@@ -216,7 +223,9 @@ def _task_id(source_id: str, title: str) -> str:
     return hashlib.sha1(f"{source_id}|{title.strip().lower()}".encode()).hexdigest()[:16]
 
 
-def _build(items: list[ExtractedTask], source_id: str, now: datetime) -> list[Task]:
+def _build(items: list[ExtractedTask], source_id: str, now: datetime,
+           cats: list[dict] | None = None) -> list[Task]:
+    from coach import categories
     tasks: list[Task] = []
     for it in items:
         if it.confidence < MIN_CONFIDENCE:
@@ -227,8 +236,9 @@ def _build(items: list[ExtractedTask], source_id: str, now: datetime) -> list[Ta
             due = datetime.combine(it.do_on, time(23, 59, 59), tzinfo=TZ)
         elif due is not None and due.tzinfo is None:  # sans date : pas d'échéance inventée, placée au plus tôt
             due = due.replace(tzinfo=TZ)
+        title = categories.prefixed(it.title, categories.code_of(it.category, cats) if cats else None)
         tasks.append(Task(
-            id=_task_id(source_id, it.title), title=it.title.strip(), due=due, not_before=not_before,
+            id=_task_id(source_id, it.title), title=title, due=due, not_before=not_before,
             estimated_minutes=it.estimated_minutes, priority=it.priority, source_id=source_id,
             description=(it.description or "").strip() or None,
         ))
@@ -287,6 +297,7 @@ def extract_items(
     projects: list[dict] | None = None,
     avoid: list[str] | None = None,
     avoid_infos: list[str] | None = None,
+    categories: list[dict] | None = None,
 ) -> Extraction:
     """Extrait tâches et événements de `text`. Vide si l'extraction échoue deux fois.
 
@@ -301,13 +312,15 @@ def extract_items(
         key += ":a" + hashlib.sha256("\n".join(avoid).encode()).hexdigest()[:12]
     if avoid_infos:
         key += ":i" + hashlib.sha256("\n".join(avoid_infos).encode()).hexdigest()[:12]
+    if categories:
+        key += ":c" + hashlib.sha256(json.dumps(categories, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:12]
 
     cached = cache.get(key)
     if cached is not None:
         items = [ExtractedTask.model_validate(d) for d in cached]
         ev_raw = cache.get(key + ":ev") or []
         inf_raw = cache.get(key + ":inf") or []
-        return Extraction(_build(items, source_id, now),
+        return Extraction(_build(items, source_id, now, categories),
                           _build_events([ExtractedEvent.model_validate(d) for d in ev_raw], source_id),
                           _hints(items, source_id) if projects else {},
                           _build_infos([ExtractedInfo.model_validate(d) for d in inf_raw], source_id))
@@ -329,9 +342,13 @@ def extract_items(
         inutiles = "\n".join(f"- {a}" for a in avoid_infos)
         prompt = ("Infos que l'utilisateur a jugées PAS UTILES récemment : ne crée PAS d'info du même genre ; "
                   f"s'il n'y a rien d'autre, laisse infos vide.\n{inutiles}\n\n{prompt}")
+    if categories:
+        from coach.categories import prompt_block
+        prompt = f"{prompt_block(categories)}\n\n{prompt}"
+        system = system + CATEGORY_RULES
     if projects:
         prompt = f"{_projects_block(projects)}\n\n{prompt}"
-        system = SYSTEM_PROMPT + PROJECT_RULES
+        system = system + PROJECT_RULES
     response: ExtractionResponse | None = None
     last_err: Exception | None = None
     for attempt in range(2):  # 1 essai + 1 seul retry
@@ -353,5 +370,5 @@ def extract_items(
     cache.put(key, [t.model_dump(mode="json") for t in response.tasks])
     cache.put(key + ":ev", [e.model_dump(mode="json") for e in response.events])
     cache.put(key + ":inf", [i.model_dump(mode="json") for i in response.infos])
-    return Extraction(_build(response.tasks, source_id, now), _build_events(response.events, source_id),
+    return Extraction(_build(response.tasks, source_id, now, categories), _build_events(response.events, source_id),
                       _hints(response.tasks, source_id) if projects else {}, _build_infos(response.infos, source_id))

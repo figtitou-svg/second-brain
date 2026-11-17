@@ -55,6 +55,10 @@ class FakeCoach:
     def extract_items(self, text: str, source_id: str, sensitivity: Sensitivity) -> tuple[list[Any], list[Any]]:
         return self.extract_tasks(text, source_id, sensitivity), list(getattr(self, "events", []))
 
+    def add_task(self, text: str, sensitivity: Sensitivity) -> list[Any]:
+        self.calls.append(("add_task", text, sensitivity))
+        return self.extract_tasks(text, "task:x", sensitivity)
+
     def add_event(self, event_id: str) -> str:
         self.calls.append(("add_event", event_id))
         return f"Ajouté à l'agenda : {event_id}"

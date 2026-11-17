@@ -92,6 +92,8 @@ def submit(svc: BotService, text: str) -> list[Reply]:
         return svc.ask(rest)
     if name == "note":
         return svc.note(rest)
+    if name == "task":
+        return svc.task(rest)
     if name == "done":
         return svc.done(rest.split()[0] if rest else "")
     return [Reply(f"❓ Commande inconnue : /{html.escape(name)}. Tape /help pour la liste.")]

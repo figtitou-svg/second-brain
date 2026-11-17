@@ -355,7 +355,7 @@ def test_help_liste_toutes_les_commandes():
     text = svc.help()[0].text
     for name, _ in COMMANDS:
         assert f"/{name}" in text
-    assert {"ask", "today", "tasks", "replan", "focus", "projet", "projets", "annuler", "semaine", "note", "done",
+    assert {"ask", "today", "tasks", "replan", "focus", "projet", "projets", "annuler", "semaine", "task", "note", "done",
             "quota", "help"} == {n for n, _ in COMMANDS}
 
 
