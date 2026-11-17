@@ -536,8 +536,10 @@ def test_tasks_groups_have_stable_keys_for_fold_state():
         await login(c)
         text = await (await c.get("/taches?tri=projet")).text()
         assert f'data-gkey="{p.id}"' in text and 'data-gkey="sans-projet"' in text
-        now = await (await c.get("/taches")).text()                    # vue par défaut : « Maintenant »
+        now = await (await c.get("/taches?tri=maintenant")).text()
         assert 'data-gkey="now:week"' in now and 'data-gkey="now:later"' in now
+        dom = await (await c.get("/taches")).text()                   # vue par défaut : par domaine
+        assert 'class="domain"' in dom and "À faire ensuite" in dom
     run(app, scenario)
 
 

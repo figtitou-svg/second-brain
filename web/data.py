@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
-from coach import agenda_rules, courses, fmt
+from coach import agenda_rules, courses, fmt, priorities, work_quota
 from coach import project_service, project_watch, projects
 from coach.db import Database
 from coach.models import Suggestion, Task
@@ -124,10 +124,28 @@ class NowCard:
 
 @dataclass(frozen=True)
 class FocusTile:
+    """Accueil, « Priorités » : un domaine (projet ou catégorie) et sa seule prochaine tâche."""
     rank: int
     title: str
     color: str
     task_id: str
+    domain: str = ""
+    why: str = ""
+    more: int = 0
+    minutes: int = 0
+
+    @property
+    def dur(self) -> str:
+        return fmt.dur(self.minutes) if self.minutes else ""
+
+
+@dataclass(frozen=True)
+class Streak:
+    """Score et séries : blocs tenus / repoussés cette semaine, jours réussis d'affilée, tâches qui glissent."""
+    kept: int
+    pushed: int
+    streak: int
+    slipping: list["FocusTile"]
 
 
 @dataclass(frozen=True)
@@ -160,6 +178,7 @@ class Home:
     focus: list[FocusTile]
     rings: list[Ring]
     counters: Counters
+    score: "Streak | None" = None
 
 
 def day_window(sched, now: datetime) -> tuple[datetime, datetime]:
@@ -190,6 +209,12 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
     segments: list[Segment] = []
     for b in blocks:
         t = tasks[b.task_id]
+        if work_quota.is_quota(t):
+            name = work_quota.label(t)
+            seg = _segment("event", name, agenda_rules.color_of(name), b.start, b.end, ws, we)
+            if seg:
+                segments.append(seg)
+            continue
         seg = _segment("block", t.title, _color(colors, t.project_id), b.start, b.end, ws, we)
         if seg:
             segments.append(seg)
@@ -211,12 +236,14 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         t = tasks[cur.task_id]
         current = cur.start <= now
         left = (cur.end - now) if current else (cur.start - now)
-        now_card = NowCard(current, t.title, _color(colors, t.project_id), cur.start, cur.end,
+        job = work_quota.is_quota(t)          # heures de job : pas de « Fait / Reporter », c'est de l'agenda
+        name = (lambda x: work_quota.label(x) if work_quota.is_quota(x) else x.title)  # noqa: E731
+        now_card = NowCard(current, name(t), agenda_rules.color_of(name(t)) if job else _color(colors, t.project_id),
+                           cur.start, cur.end,
                            max(0, int(left.total_seconds() // 60)), int((cur.end - cur.start).total_seconds() // 60),
-                           cur.id, tasks[nxt.task_id].title if nxt else None, nxt.start if nxt else None)
+                           "" if job else cur.id, name(tasks[nxt.task_id]) if nxt else None, nxt.start if nxt else None)
 
-    focus = [FocusTile(i, r.task.title, _color(colors, r.task.project_id), r.task.id)
-             for i, r in enumerate(sched.ranking(now)[:3], 1)]
+    focus = priority_tiles(db, sched, now, colors)
 
     rings: list[Ring] = []
     suggestions = 0
@@ -233,10 +260,91 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
                           stall.signals[0].line if stall else None, step))
         suggestions += sum(1 for s in db.list_project_suggestions(p.id) if s.state == "proposed")
 
-    open_tasks = [t for t in tasks.values() if t.status in projects.OPEN]
+    open_tasks = [t for t in tasks.values() if t.status in projects.OPEN and not work_quota.is_quota(t)]
     overdue = sum(1 for t in open_tasks if t.due is not None and t.due < now)
     return Home(now, ws, we, round(_pct(now, ws, we), 2), now_card, segments, focus, rings,
-                Counters(len(open_tasks), overdue, suggestions))
+                Counters(len(open_tasks), overdue, suggestions), streak_of(db, sched, now, colors))
+
+
+PRIORITY_TILES = 5
+STREAK_OK = 0.8          # un jour est réussi quand 80 % de ses blocs sont faits
+PUSHED = ("not_finished", "rescheduled", "next_week", "missed")
+
+
+def domain_look(d, colors: dict[str, str]) -> tuple[str, str]:
+    """(nom affiché, couleur) d'un domaine : projet, catégorie (nom complet) ou Divers."""
+    if d.project_id:
+        return d.name, colors.get(d.project_id, NO_PROJECT)
+    if d.category:
+        return category_label(d.category), category_color(d.category)
+    return "Divers", NO_PROJECT
+
+
+def priority_tiles(db: Database, sched, now: datetime, colors: dict[str, str]) -> list[FocusTile]:
+    out = []
+    for i, d in enumerate(sched.domains(now)[:PRIORITY_TILES], 1):
+        name, color = domain_look(d, colors)
+        t = d.top.task
+        out.append(FocusTile(i, split_category(t.title)[1], color, t.id, name, priorities.why(d.top), len(d.rest),
+                             t.estimated_minutes))
+    return out
+
+
+def streak_of(db: Database, sched, now: datetime, colors: dict[str, str]) -> Streak:
+    tz = sched.tz
+    local = now.astimezone(tz)
+    monday = (local - timedelta(days=local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    mine = [b for b in db.list_blocks() if not b.task_id.startswith(work_quota.PREFIX) and b.end <= now]
+    week = [b for b in mine if b.start >= monday]
+    kept = sum(1 for b in week if b.outcome == "done")
+    pushed = sum(1 for b in week if b.outcome in PUSHED)
+    by_day: dict[date, list] = {}
+    for b in mine:
+        by_day.setdefault(b.start.astimezone(tz).date(), []).append(b)
+
+    def ok(day: date) -> bool | None:
+        bl = [b for b in by_day.get(day, []) if b.outcome is not None]
+        if not bl:
+            return None                                   # jour sans bloc : ne casse pas la série
+        return sum(1 for b in bl if b.outcome == "done") / len(bl) >= STREAK_OK
+    streak, day = 0, local.date()
+    if ok(day) is not True:                               # aujourd'hui ne compte que s'il est déjà réussi
+        day -= timedelta(days=1)
+    for _ in range(90):
+        v = ok(day)
+        if v is False:
+            break
+        streak += 1 if v else 0
+        day -= timedelta(days=1)
+    slipping = []
+    for r in sched.ranking(now):
+        t = r.task
+        if t.reschedule_count >= 2 or (t.due is not None and t.due < now):
+            label = (f"en retard depuis {fmt.when(t.due)}" if t.due and t.due < now
+                     else f"repoussée {t.reschedule_count} fois")
+            slipping.append(FocusTile(len(slipping) + 1, t.title, _color(colors, t.project_id), t.id, "", label))
+        if len(slipping) >= 5:
+            break
+    return Streak(kept, pushed, streak, slipping)
+
+
+def domain_groups(db: Database, sched, now: datetime, filtre: str) -> tuple[list[TaskGroup], dict[str, int]]:
+    """Page Tâches, vue par domaine : un groupe par projet ou catégorie, trié par importance ; dans chaque groupe,
+    la prochaine tâche d'abord (avec sa raison), les autres derrière, par importance."""
+    groups, counts = task_groups(db, now, filtre, "projet")
+    if filtre == "faites":
+        return groups, counts
+    rows = {r.task_id: r for g in groups for r in g.rows}
+    colors = project_colors(db)
+    out = []
+    for d in sched.domains(now):
+        mine = [x for x in [d.top, *d.rest] if x.task.id in rows]
+        if not mine:
+            continue
+        name, color = domain_look(d, colors)
+        trs = [replace(rows[x.task.id], why=priorities.why(x) if k == 0 else "") for k, x in enumerate(mine)]
+        out.append(TaskGroup(name, color, d.project_id, trs, f"dom:{d.key}", open=True))
+    return out, counts
 
 
 # --- étape 2 : Agenda et Récap semaine -------------------------------------------------------------------
@@ -324,6 +432,10 @@ def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
     for b in db.list_blocks():
         t = tasks.get(b.task_id)
         if t is None or b.outcome not in (None, "done"):
+            continue
+        if work_quota.is_quota(t):   # heures de job : un créneau d'agenda, pas une tâche (aucune action)
+            name = work_quota.label(t)
+            add("event", name, agenda_rules.color_of(name), b.start, b.end)
             continue
         add("block", t.title, _color(colors, t.project_id), b.start, b.end, b.id if b.outcome is None else None,
             task_id=t.id)
@@ -435,6 +547,7 @@ class TaskRow:
     project_id: str | None = None
     project: str = ""                     # nom du projet (vide : sans projet)
     more: int = 0                         # vue « Maintenant » : autres tâches du projet qui attendent derrière
+    why: str = ""                         # vue par domaine : pourquoi c'est la prochaine (enjeu, échéance, reports)
 
 
 @dataclass(frozen=True)
@@ -503,7 +616,7 @@ class TaskGroup:
     open: bool = False  # déplié à l'arrivée (vue « Maintenant »)
 
 
-TRIS = ("maintenant", "projet", "categorie", "date")
+TRIS = ("domaine", "maintenant", "projet", "categorie", "date")
 
 
 def now_groups(groups: list[TaskGroup], now: datetime) -> list[TaskGroup]:
@@ -767,11 +880,14 @@ class Views:
     def focus(self) -> list[FocusRow]:
         return focus_rows(self.sched, self.now())
 
-    def tasks(self, filtre: str, tri: str = "maintenant") -> dict:
+    def tasks(self, filtre: str, tri: str = "domaine") -> dict:
         now = self.now()
         filtre = filtre if filtre in FILTERS else "tout"
-        tri = tri if tri in TRIS else "maintenant"
-        groups, counts = task_groups(self.db, now, filtre, tri)
+        tri = tri if tri in TRIS else "domaine"
+        if tri == "domaine":
+            groups, counts = domain_groups(self.db, self.sched, now, filtre)
+        else:
+            groups, counts = task_groups(self.db, now, filtre, tri)
         return {"groups": groups, "counts": counts, "filtre": filtre, "tri": tri, "now": now}
 
     def task(self, task_id: str) -> TaskDetail | None:

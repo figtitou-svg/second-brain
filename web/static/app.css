@@ -552,3 +552,35 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 /* barre du bas : s'efface en descendant dans l'agenda */
 .bottom{transition:transform .2s ease}
 .bottom.away{transform:translateY(110%)}
+
+/* Accueil : priorités (une tâche par domaine) et score */
+.prio{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:10px}
+.prio-card{background:var(--card);border-radius:var(--radius);border-left:4px solid var(--c);padding:12px 14px;min-width:0}
+.prio-card.first{background:color-mix(in srgb,var(--c) 16%,var(--card));box-shadow:0 0 0 1px var(--c) inset}
+.prio-kicker,.lead-kicker{margin:0 0 4px;font-size:12px;font-weight:700;color:var(--c);text-transform:uppercase;letter-spacing:.04em}
+.prio-domain{margin:0;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.prio-domain .dot,.domain-h .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.prio-title{margin:4px 0 2px;font-size:17px;overflow-wrap:anywhere}
+.prio-title a{color:var(--text);text-decoration:none}
+.prio-why{margin:0 0 10px;font-size:13px}
+.scoreline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.scoreline .stat{background:var(--card);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.scoreline .stat b{font-size:22px}
+.scoreline .stat span{font-size:12px;color:var(--muted)}
+.scoreline .stat.bad b{color:var(--alert)}
+.slip-h{font-size:13px;margin:12px 0 6px}
+.sliplist{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.sliplist li{background:var(--card);border-left:4px solid var(--c);border-radius:10px;padding:8px 10px;overflow-wrap:anywhere}
+.sliplist a{color:var(--text)}
+/* Tâches : vue par domaine */
+.domain{margin:0 0 16px}
+.domain-h{display:flex;align-items:center;gap:8px;font-size:16px;margin:0 0 8px;flex-wrap:wrap}
+.domain-h .rank{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.domain-h .n{font-size:12px;font-weight:400}
+.domain-link{margin-left:auto;font-size:13px;font-weight:400}
+.taskcard[data-lead]{box-shadow:0 0 0 1px var(--c) inset;background:color-mix(in srgb,var(--c) 10%,var(--card))}
+.dmore{margin-top:6px}
+.dmore>summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:40px;display:flex;align-items:center}
+.prio .row-actions{flex-wrap:nowrap;gap:6px}
+.prio .row-actions button{flex:1 1 0;min-width:0;padding:0 6px;font-size:14px;white-space:nowrap}
+.prio-card:not(.first) .row-actions button{min-height:38px}

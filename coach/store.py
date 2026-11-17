@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
-from coach import agenda_rules, work_quota
+from coach import agenda_rules, priorities, work_quota
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -209,6 +209,24 @@ def set_duration(task_id: str, minutes: int) -> str | None:
 def infos_for(source_id: str) -> list:
     """Infos tirées d'une source (un mail) : la notification « ℹ️ Info » les annonce."""
     return _need()[0].infos_for(source_id)
+
+
+_stakes_llm = None
+
+
+def configure_stakes(llm) -> None:
+    """IA qui note l'enjeu des tâches (appelée avec prompt, system=, json_mode=)."""
+    global _stakes_llm
+    _stakes_llm = llm
+
+
+def rate_stakes() -> int:
+    """Note l'enjeu (1 à 5) des tâches ouvertes pas encore notées ou modifiées. Retourne le nombre noté."""
+    db, sched = _need()
+    if _stakes_llm is None:
+        return 0
+    names = {p.id: p.name for p in db.list_projects()}
+    return priorities.rate(db, _stakes_llm, db.list_tasks("pending", "scheduled"), names, sched.now())
 
 
 def ensure_work_quota() -> int:

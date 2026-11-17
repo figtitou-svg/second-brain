@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 from zoneinfo import ZoneInfo
 
-from coach import focus, fmt, project_service
+from coach import focus, fmt, priorities, project_service, work_quota
 from coach.calendar_client import STYLE_COLOR, CalendarClient, event_title
 from coach.db import Database
 from coach.models import Block, Task, new_id
@@ -27,6 +27,7 @@ log = logging.getLogger("coach.scheduler")
 Button = tuple[str, str]
 Notify = Callable[[str, "list[Button] | None"], None]
 
+PRIORITY_LINES = 6   # domaines listés dans le message Priorités (/focus)
 END_WINDOW = timedelta(hours=6)       # au-delà, on ne relance plus "C'est fait ?" : le bloc est manqué et replacé
 BRIEFING_WINDOW = timedelta(hours=3)  # briefing ignoré si le serveur était éteint plus longtemps
 NUDGE_MIN_OFF_FOCUS_MIN = 90          # minutes terminées hors focus avant de relancer
@@ -212,6 +213,15 @@ class CoachScheduler:
             task = self.db.get_task(blk.task_id)
             if task is None or task.status in ("done", "dropped"):
                 continue
+            if work_quota.is_quota(task):   # heures de job : un créneau d'agenda, rappel seul, fait tout seul
+                if blk.start - lead <= now < blk.start and self.db.claim_notification(f"pre:{blk.id}"):
+                    self.notify(f"⏰ <b>Dans {self.rules.reminder_lead_minutes} min</b> : "
+                                f"{fmt.esc(work_quota.label(task))}\n{fmt.rng(blk.start, blk.end)}", None)
+                if blk.end <= now:
+                    self.db.set_block_outcome(blk.id, "done")
+                    if not self.db.list_blocks(task.id, open_only=True) and (task.due is None or now > task.due):
+                        self.db.set_task_status(task.id, "done")
+                continue
             if blk.start - lead <= now < blk.start and self.db.claim_notification(f"pre:{blk.id}"):
                 self.notify(f"⏰ <b>Dans {self.rules.reminder_lead_minutes} min</b>\n{fmt.esc(task.title)}"
                             f"\n{fmt.rng(blk.start, blk.end)}", None)
@@ -267,7 +277,8 @@ class CoachScheduler:
         done_today = [b for b in blocks if b.outcome == "done" and day_start <= b.end <= now]
         top = self.ranking(now)[:focus.FOCUS_SIZE]
         top_ids = {r.task.id for r in top}
-        off_minutes = sum(b.minutes for b in done_today if b.task_id not in top_ids)
+        off_minutes = sum(b.minutes for b in done_today
+                          if b.task_id not in top_ids and not b.task_id.startswith(work_quota.PREFIX))
         if off_minutes < NUDGE_MIN_OFF_FOCUS_MIN:
             return
         open_blocks = [b for b in blocks if b.outcome is None]
@@ -388,9 +399,16 @@ class CoachScheduler:
     def ranking(self, now: datetime | None = None) -> list[focus.Ranked]:
         """Tâches ouvertes classées par importance (calcul en base, sans réseau)."""
         now = (now or self.now()).astimezone(self.tz)
-        return focus.rank_tasks(self.db.list_tasks("pending", "scheduled"), self.db.done_minutes(), now,
-                                self.db.get_weights(), self.rules.max_focus_minutes_per_day,
-                                self.rules.min_block_minutes)
+        tasks = self.db.list_tasks("pending", "scheduled")
+        ranked = focus.rank_tasks(tasks, self.db.done_minutes(), now,
+                                  self.db.get_weights(), self.rules.max_focus_minutes_per_day,
+                                  self.rules.min_block_minutes)
+        return priorities.apply_stakes(ranked, priorities.valid_stakes(self.db, tasks))   # enjeu noté par l'IA
+
+    def domains(self, now: datetime | None = None) -> list[priorities.Domain]:
+        """Une tâche par domaine (projet ou catégorie), domaines triés par importance."""
+        names = {p.id: p.name for p in self.db.list_projects("active", "paused")}
+        return priorities.domains(self.ranking(now), names)
 
     def focus_buttons(self, now: datetime | None = None) -> list[list[tuple[str, str]]]:
         return focus.focus_buttons(self.ranking(now))
@@ -413,11 +431,26 @@ class CoachScheduler:
                    note: str | None = None) -> tuple[str, list[list[tuple[str, str]]]]:
         """(texte HTML, boutons) du focus ; `now_mode` : « à faire maintenant » + temps libre avant l'agenda."""
         now = (now or self.now()).astimezone(self.tz)
-        ranked = self.ranking(now)
-        why = focus.reasons(ranked[:focus.FOCUS_SIZE], self.explain_fn, self.db, self.explain_sensitivity)
-        extra = self._free_before_next(now) if now_mode and ranked else None
-        text = focus.render(ranked, why, now, now_mode=now_mode, extra_line=extra)
-        return (f"{note}\n\n{text}" if note else text), focus.focus_buttons(ranked)
+        doms = self.domains(now)
+        if not doms:
+            text = "🎯 <b>Rien d'urgent</b>, journée libre 🎉"
+            return (f"{note}\n\n{text}" if note else text), []
+        lines = ["🎯 <b>Tes priorités</b> : une tâche par domaine, la plus importante d'abord"]
+        for i, d in enumerate(doms[:PRIORITY_LINES], 1):
+            t = d.top.task
+            head = "👉 <b>Si tu ne fais qu'une chose</b>\n" if i == 1 else ""
+            more = f" (+{len(d.rest)})" if d.rest else ""
+            lines.append(f"{head}{i}. <b>{fmt.esc(d.name)}</b>{more} → {fmt.esc(t.title)} · {fmt.dur(t.estimated_minutes)}"
+                         f"\n   <i>{fmt.esc(priorities.why(d.top))}</i>")
+        if len(doms) > PRIORITY_LINES:
+            lines.append(f"<i>+ {len(doms) - PRIORITY_LINES} autre(s) domaine(s) sur le site</i>")
+        extra = self._free_before_next(now) if now_mode else None
+        if extra:
+            lines.append(extra)
+        buttons = [[(f"▶ {i}", f"nudgego:{d.top.task.id}"), (f"✅ {i}", f"td:{d.top.task.id}"),
+                    (f"📅 {i}", f"tpo:{d.top.task.id}")] for i, d in enumerate(doms[:3], 1)]
+        text = "\n".join(lines)
+        return (f"{note}\n\n{text}" if note else text), buttons
 
     def adjust_importance(self, task_id: str, up: bool) -> tuple[str, list[list[tuple[str, str]]]]:
         """Boutons ⬆ / ⬇ : décale la tâche et pousse (ou baisse) le poids de sa matière, puis recalcule le focus."""

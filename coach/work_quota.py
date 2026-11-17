@@ -82,3 +82,10 @@ def due_tasks(known_ids: set[str], now: datetime) -> list[Task]:
             if t is not None and t.id not in known_ids:
                 out.append(t)
     return out
+
+
+def label(task: Task) -> str:
+    """Nom affiché dans l'agenda et les rappels : « Travail · Franck (Nomana IT) »."""
+    q = next((q for q in QUOTAS if task.id.startswith(f"{PREFIX}{q.key}-")), None)
+    name = q.title.split("]", 1)[-1].strip() if q else task.title
+    return f"Travail · {name}"

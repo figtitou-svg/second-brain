@@ -92,7 +92,7 @@ def test_focus_card_now_mode_shows_time_before_next_event(env):
     cal.external_busy = [(dt(2026, 10, 15, 10, 30), dt(2026, 10, 15, 12, 0))]
     db.upsert_task(mk("Rendu", due=dt(2026, 10, 16, 18)))
     text, buttons = s.focus_card(now_mode=True)
-    assert "À faire maintenant" in text and "Tu as 1 h 30 avant ton prochain événement" in text
+    assert "Si tu ne fais qu'une chose" in text and "Tu as 1 h 30 avant ton prochain événement" in text
     assert len(buttons) == 1
 
 
@@ -102,7 +102,7 @@ def test_adjust_up_and_down_update_boost_and_weight(env):
     db.upsert_task(t)
     text, buttons = s.adjust_importance(t.id, True)
     assert db.get_task(t.id).boost == 1 and db.get_weights() == {"Alg": 1.1}
-    assert "Ton focus" in text and buttons
+    assert "Tes priorités" in text and buttons
     s.adjust_importance(t.id, False)
     s.adjust_importance(t.id, False)
     assert db.get_task(t.id).boost == -1
@@ -124,6 +124,6 @@ def test_store_facade(env):
     t = mk("Rendu", due=dt(2026, 10, 16, 18))
     db.upsert_task(t)
     text, buttons = store.focus()
-    assert "À faire maintenant" in text and buttons
+    assert "Si tu ne fais qu'une chose" in text and buttons
     store.adjust_importance(t.id, True)
     assert db.get_task(t.id).boost == 1

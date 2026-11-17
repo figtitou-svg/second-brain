@@ -146,9 +146,11 @@ def test_focus_top_three_with_colors():
     db.save_project(p)
     for i in range(5):
         db.upsert_task(Task(title=f"T{i}", project_id=p.id if i == 0 else None, due=NOW + timedelta(days=i + 1)))
-    focus = data.build_home(db, sched, cache, NOW).focus
-    assert [f.rank for f in focus] == [1, 2, 3]
+    focus = data.build_home(db, sched, cache, NOW).focus     # une tuile par domaine : le projet, puis « Divers »
+    assert [f.rank for f in focus] == [1, 2]
     assert {f.color for f in focus} == {data.project_colors(db)[p.id], data.NO_PROJECT}
+    divers = next(f for f in focus if f.domain == "Divers")
+    assert divers.title == "T1" and divers.more == 3 and divers.why
 
 
 def test_agenda_cache_calls_once_per_ttl_and_survives_errors():

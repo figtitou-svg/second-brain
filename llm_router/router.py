@@ -95,8 +95,11 @@ def complete(
     system: str | None = None,
     json_mode: bool = False,
     timeout: float | None = None,
+    prefer_fallback: bool = False,
 ) -> str:
-    """`timeout` : secondes max par appel HTTP (défaut : LLM_TIMEOUT_SECONDS, sinon 60)."""
+    """`timeout` : secondes max par appel HTTP (défaut : LLM_TIMEOUT_SECONDS, sinon 60).
+    `prefer_fallback` (contenu public seulement) : essaie d'abord LLM_PUBLIC_FALLBACK (Groq, quota large) avant
+    LLM_PUBLIC_MODEL (Gemini, peu de requêtes gratuites par jour)."""
     if sensitivity not in ("private", "public"):
         raise SensitivityError(f"sensitivity invalide: {sensitivity!r}")
 
@@ -113,6 +116,8 @@ def complete(
             _env("LLM_PUBLIC_FALLBACK", "groq/llama-3.3-70b-versatile"),
             _env("LLM_PRIVATE_MODEL", "ollama/qwen2.5:7b"),
         ]
+        if prefer_fallback:
+            chain = [chain[1], chain[0], chain[2]]
 
     # pas de cache ici : les prompts contiennent la date et l'heure (jamais deux fois les mêmes), et une réponse
     # figée deviendrait fausse ; l'extraction a son propre cache, indexé sur le texte seul (coach/extract.py)

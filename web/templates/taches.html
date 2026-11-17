@@ -7,5 +7,5 @@
   <button type="submit">Ajouter</button>
 </form>
 <input type="search" id="tfilter" class="tfilter" placeholder="Chercher dans les tâches…" aria-label="Chercher dans les tâches" autocomplete="off">
-<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}{{ '' if tasks.tri == 'maintenant' else '&tri=' ~ tasks.tri }}">{% include "_taches_body.html" %}</section>
+<section id="taches" data-refresh="/fragment/taches?filtre={{ tasks.filtre }}{{ '' if tasks.tri == 'domaine' else '&tri=' ~ tasks.tri }}">{% include "_taches_body.html" %}</section>
 {% endblock %}

@@ -1,7 +1,7 @@
 {# Tâches : pastilles de filtre (aria-current="true" : "page" est réservé au menu), puis un groupe repliable par projet.
    Couleurs (--c) internes ; titres, noms de projet et d'étape échappés. #}
-{% set TRIS = [("maintenant", "Maintenant"), ("projet", "Projet"), ("categorie", "Catégorie"), ("date", "Échéance")] %}
-{% set tq = "" if tasks.tri == "maintenant" else "&tri=" ~ tasks.tri %}
+{% set TRIS = [("domaine", "Par domaine"), ("maintenant", "Maintenant"), ("projet", "Projet"), ("categorie", "Catégorie"), ("date", "Échéance")] %}
+{% set tq = "" if tasks.tri == "domaine" else "&tri=" ~ tasks.tri %}
 {% set FILTRES = [("tout", "Tout"), ("retard", "En retard"), ("semaine", "Cette semaine"), ("sans-projet", "Sans projet"), ("faites", "Faites")] %}
 <nav class="chips" aria-label="Filtres">
   {% for f, label in FILTRES %}
@@ -10,9 +10,45 @@
 </nav>
 <details class="sortmenu">
   <summary>⇅ Trier<span class="muted"> : {% for k, l in TRIS %}{% if k == tasks.tri %}{{ l }}{% endif %}{% endfor %}</span></summary>
-  <nav aria-label="Tri">{% for k, l in TRIS %}<a href="/taches?filtre={{ tasks.filtre }}{{ '' if k == 'maintenant' else '&tri=' ~ k }}"{% if k == tasks.tri %} class="on" aria-label="{{ l }} (tri actuel)"{% endif %}>{{ l }}</a>{% endfor %}</nav>
+  <nav aria-label="Tri">{% for k, l in TRIS %}<a href="/taches?filtre={{ tasks.filtre }}{{ '' if k == 'domaine' else '&tri=' ~ k }}"{% if k == tasks.tri %} class="on" aria-label="{{ l }} (tri actuel)"{% endif %}>{{ l }}</a>{% endfor %}</nav>
 </details>
 {% if tasks.groups and tasks.filtre != "faites" %}<p class="muted swipe-hint">Astuce : glisse une tâche jusqu'au bout vers la droite pour la terminer, vers la gauche pour la supprimer.</p>{% endif %}
+{% macro taskcard(t, lead=False) %}
+    {% set is_open = t.status in ("pending", "scheduled") %}
+    <li class="rowcard taskcard{% if t.overdue and is_open %} overdue{% endif %}{% if not is_open %} donecard{% endif %}"{% if lead %} data-lead{% endif %} style="--c: {{ t.color }}"{% if is_open %} data-swipe data-swipe-done="td:{{ t.task_id }}" data-swipe-drop="ign:{{ t.task_id }}"{% endif %}>
+      {% if lead %}<p class="lead-kicker">À faire ensuite</p>{% endif %}
+      <h2 class="rtitle"><a href="/taches/{{ t.task_id }}">{{ t.name }}</a></h2>
+      <p class="tag">{{ t.category or t.project or "Sans projet" }}</p>
+      {% if t.why %}<p class="prio-why muted">{{ t.why }}</p>{% endif %}
+      <p class="meta">
+        {% if t.due %}<span class="due">{% if t.overdue and is_open %}En retard · {% endif %}⚑ {{ t.due|fr_day }} {{ t.due|hm }}</span>{% endif %}
+        {% if t.minutes %}<span class="muted">⏱ {{ t.minutes|dur }}</span>{% endif %}
+        {% if t.step %}<span class="muted step">Étape : {{ t.step }}</span>{% endif %}
+        {% if t.slot %}<span class="pin">📌 {{ t.slot|fr_day_short }} {{ t.slot|hm }}</span>
+        {% elif t.status == "scheduled" %}<span class="pin">📌 Planifiée</span>{% endif %}
+      </p>
+    </li>
+{% endmacro %}
+{% if tasks.tri == "domaine" and tasks.filtre != "faites" %}
+{# Par domaine : une carte par projet / catégorie, la plus importante en haut ; sa prochaine tâche visible, le reste
+   dans un seul pli. #}
+{% for g in tasks.groups %}
+<section class="domain" style="--c: {{ g.color }}" aria-labelledby="dom-{{ loop.index }}">
+  <h2 class="domain-h" id="dom-{{ loop.index }}"><span class="rank" aria-hidden="true">{{ loop.index }}</span><span class="dot" aria-hidden="true"></span>{{ g.name }}
+    <span class="n muted">{{ g.rows|length }} tâche{{ "s" if g.rows|length > 1 }}</span>
+    {% if g.project_id %}<a class="domain-link muted" href="/projets/{{ g.project_id }}">projet ›</a>{% endif %}</h2>
+  <ul class="cards task-list">{{ taskcard(g.rows[0], True) }}</ul>
+  {% if g.rows|length > 1 %}
+  <details class="dmore tgroup" data-gkey="{{ g.key }}">
+    <summary>+ {{ g.rows|length - 1 }} autre{{ "s" if g.rows|length > 2 }}</summary>
+    <ul class="cards task-list">{% for t in g.rows[1:] %}{{ taskcard(t) }}{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>
+{% else %}
+<p class="muted empty-state">{% if tasks.counts["tout"] %}Aucune tâche dans ce filtre.{% else %}Aucune tâche ouverte.{% endif %}</p>
+{% endfor %}
+{% else %}
 {% for g in tasks.groups %}
 <details class="tgroup"{% if g.open %} open{% endif %} data-gkey="{{ g.key or g.project_id or 'sans-projet' }}" style="--c: {{ g.color }}">
   <summary><span class="dot" aria-hidden="true"></span><span class="gname">{{ g.name }}</span>
@@ -49,3 +85,4 @@
 {% else %}
 <p class="muted empty-state">{% if tasks.filtre == "faites" %}Aucune tâche terminée.{% elif tasks.counts["tout"] %}Aucune tâche dans ce filtre.{% else %}Aucune tâche ouverte.{% endif %}</p>
 {% endfor %}
+{% endif %}

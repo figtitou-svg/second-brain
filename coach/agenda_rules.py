@@ -23,11 +23,12 @@ RECURRING: tuple[tuple[str, int, time, time], ...] = (
 
 # type -> couleur (lisible sur fond clair et sombre)
 COLORS = {"eval": "#D64545", "td": "#3B82C4", "tp": "#7C5CC4", "lang": "#2A9D8F", "sport": "#E07B24",
-          "perso": "#C2477F", "cours": "#55607E"}
+          "perso": "#C2477F", "job": "#C9A227", "cours": "#55607E"}
 LABELS = {"eval": "Évaluation", "td": "TD", "tp": "TP", "lang": "Langue", "sport": "Sport", "perso": "Perso",
-          "cours": "Cours"}
+          "job": "Travail", "cours": "Cours"}
 
 _KINDS = (
+    ("job", re.compile(r"^Travail ·")),          # heures de job (coach.work_quota.label)
     ("eval", re.compile(r"évaluation|evaluation|\bDS\b|examen|partiel|\bQCM\b|soutenance", re.I)),
     ("sport", re.compile(r"rugby|\bEPS\b|sport|match|entra[iî]nement", re.I)),
     ("lang", re.compile(r"^(ANG|ESP|ALL|LV)\b|anglais|espagnol", re.I)),

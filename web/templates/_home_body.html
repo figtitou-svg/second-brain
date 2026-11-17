@@ -21,7 +21,7 @@
     <div class="title">{{ c.title }}</div>
     {% if c.next_title and c.next_start and c.next_start.astimezone(home.now.tzinfo).date() == today %}<div class="muted next">Ensuite {{ c.next_start.strftime("%Hh%M") }} · {{ c.next_title }}</div>{% endif %}
     {% if c.current %}
-    <div class="actions"><button type="button" data-cb="ok:{{ c.block_id }}">Fait</button><button type="button" data-cb="rep:{{ c.block_id }}">Reporter</button></div>
+    {% if c.block_id %}<div class="actions"><button type="button" data-cb="ok:{{ c.block_id }}">Fait</button><button type="button" data-cb="rep:{{ c.block_id }}">Reporter</button></div>{% endif %}
     {% endif %}
   </div>
 </article>
@@ -40,8 +40,32 @@
 </section>
 
 {% if home.focus %}
-<section aria-labelledby="focus-h"><h2 id="focus-h" class="muted">Focus</h2>
-  <ol class="focus">{% for f in home.focus %}<li style="--c: {{ f.color }}"><span class="rank" aria-hidden="true">{{ f.rank }}</span><span>{{ f.title }}</span></li>{% endfor %}</ol>
+{# Priorités : une seule tâche par domaine (projet ou catégorie), le domaine le plus important d'abord #}
+<section aria-labelledby="prio-h"><h2 id="prio-h" class="muted">Priorités</h2>
+  <ol class="prio">{% for f in home.focus %}
+    <li class="prio-card{% if loop.first %} first{% endif %}" style="--c: {{ f.color }}">
+      {% if loop.first %}<p class="prio-kicker">👉 Si tu ne fais qu'une chose</p>{% endif %}
+      <p class="prio-domain"><span class="dot" aria-hidden="true"></span>{{ f.domain }}{% if f.more %} <span class="muted">· {{ f.more }} autre{{ "s" if f.more > 1 }} derrière</span>{% endif %}</p>
+      <h3 class="prio-title"><a href="/taches/{{ f.task_id }}">{{ f.title }}</a> <span class="muted">· {{ f.dur }}</span></h3>
+      {% if f.why %}<p class="prio-why muted">{{ f.why }}</p>{% endif %}
+      <div class="row-actions">
+        <button type="button"{% if loop.first %} class="primary"{% endif %} data-cb="nudgego:{{ f.task_id }}" aria-label="Je m'y mets : {{ f.title }}">▶ Je m'y mets</button>
+        <button type="button" data-cb="td:{{ f.task_id }}" aria-label="Fait : {{ f.title }}">✅ Fait</button>
+        <button type="button" data-cb="tpo:{{ f.task_id }}" aria-label="Demain : {{ f.title }}">📅 Demain</button>
+      </div>
+    </li>{% endfor %}</ol>
+</section>
+{% endif %}
+
+{% if home.score %}{% set sc = home.score %}
+<section aria-labelledby="score-h"><h2 id="score-h" class="muted">Score</h2>
+  <div class="scoreline">
+    <div class="stat"><b>{{ sc.kept }}</b><span>bloc{{ "s" if sc.kept > 1 }} tenu{{ "s" if sc.kept > 1 }} cette semaine</span></div>
+    <div class="stat{% if sc.pushed > sc.kept %} bad{% endif %}"><b>{{ sc.pushed }}</b><span>repoussé{{ "s" if sc.pushed > 1 }}</span></div>
+    <div class="stat"><b>🔥 {{ sc.streak }}</b><span>jour{{ "s" if sc.streak > 1 }} réussi{{ "s" if sc.streak > 1 }} d'affilée</span></div>
+  </div>
+  {% if sc.slipping %}<h3 class="muted slip-h">Ça glisse</h3>
+  <ul class="sliplist">{% for f in sc.slipping %}<li style="--c: {{ f.color }}"><a href="/taches/{{ f.task_id }}">{{ f.title }}</a> <span class="muted">{{ f.why }}</span></li>{% endfor %}</ul>{% endif %}
 </section>
 {% endif %}
 

@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS infos (
   created_at TEXT NOT NULL,
   seen INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS task_stakes (
+  task_id TEXT PRIMARY KEY,
+  stakes INTEGER NOT NULL,
+  reason TEXT,
+  key TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS hidden_courses (
   title TEXT PRIMARY KEY,
   created_at TEXT NOT NULL
@@ -263,6 +269,14 @@ class Database:
         elif ids:
             self._exec(f"UPDATE infos SET seen = 1 WHERE seen = 0 AND id IN ({','.join('?' * len(ids))})", tuple(ids))
 
+    # --- enjeu d'une tâche (1 à 5), noté par l'IA ; `key` change quand la tâche change (à renoter) ---------
+    def set_stakes(self, task_id: str, stakes: int, reason: str | None, key: str) -> None:
+        self._exec("INSERT OR REPLACE INTO task_stakes (task_id, stakes, reason, key) VALUES (?,?,?,?)",
+                   (task_id, int(stakes), reason, key))
+
+    def all_stakes(self) -> dict[str, tuple[int, str | None, str]]:
+        return {r["task_id"]: (r["stakes"], r["reason"], r["key"]) for r in self._query("SELECT * FROM task_stakes")}
+
     # --- cours masqués depuis l'agenda (« Masquer ce cours ») ----------------------------------------------
     def hide_course(self, title: str) -> bool:
         return self._exec("INSERT OR IGNORE INTO hidden_courses (title, created_at) VALUES (?,?)",
@@ -334,10 +348,11 @@ class Database:
         return self._task(rows[0]) if rows else None
 
     def list_tasks(self, *statuses: str) -> list[Task]:
-        if statuses:   # listes de travail : une tâche de mail pas encore gardée (« À trier ») n'y figure pas
-            q = ",".join("?" * len(statuses))
+        if statuses:   # listes de travail : ni tâche de mail pas encore gardée (« À trier »), ni heures de job
+            q = ",".join("?" * len(statuses))      # (quota-… : des créneaux d'agenda, pas des tâches à choisir)
             rows = self._query(f"""SELECT * FROM tasks WHERE status IN ({q})
                                    AND id NOT IN (SELECT task_id FROM mail_origin WHERE confirmed = 0)
+                                   AND id NOT LIKE 'quota-%'
                                    ORDER BY created_at, id""", statuses)
         else:
             rows = self._query("SELECT * FROM tasks ORDER BY created_at, id")
