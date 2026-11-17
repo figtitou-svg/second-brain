@@ -48,7 +48,7 @@ def test_agenda_day_items_kinds_colors_and_actions():
     by_kind = {i.kind: i for i in day.items}
     assert set(by_kind) == {"block", "course", "event"}
     assert by_kind["block"].color == data.project_colors(db)[p.id] and by_kind["block"].block_id == b.id
-    assert by_kind["course"].block_id is None and by_kind["course"].color == data.COURSE
+    assert by_kind["course"].block_id is None and by_kind["course"].color == data.agenda_rules.color_of(by_kind["course"].title)
     assert all(0 <= i.top <= 100 and 0 < i.height <= 100 and i.top + i.height <= 100.001 for i in day.items)
 
 

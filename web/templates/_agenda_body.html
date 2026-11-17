@@ -22,6 +22,7 @@
     </div>
   </div>
 </div>
+<ul class="legend" aria-label="Couleurs">{% for label, color in agenda_legend %}<li style="--c: {{ color }}">{{ label }}</li>{% endfor %}<li style="--c: var(--accent)">Tâches (couleur du projet)</li></ul>
 
 {% macro actions(it) %}{% if it.block_id %}<span class="actions"><button type="button" data-cb="ok:{{ it.block_id }}">✅ Fait</button><button type="button" data-cb="rep:{{ it.block_id }}">⏭ Reporter</button></span>{% endif %}{% endmacro %}
 
@@ -80,7 +81,7 @@
         <li class="{{ it.kind }}" style="--c: {{ it.color }}">
           <span class="time">{{ it.start|hm(tz) }}–{{ it.end|hm(tz) }}</span>
           <span class="name">{{ it.title }}</span>
-          <small class="muted">{{ KIND[it.kind] }}{% if it.kind == "block" and not it.block_id %} · fait{% endif %}</small>
+          <small class="muted">{{ KIND[it.kind] if it.kind == "block" else it.title|agenda_label }}{% if it.kind == "block" and not it.block_id %} · fait{% endif %}</small>
           {{ actions(it) }}
         </li>
         {% endfor %}

@@ -22,7 +22,7 @@ from aiohttp import web
 from markupsafe import Markup   # dépendance de Jinja2
 
 from bot.handlers import COMMANDS, BotService, Reply
-from coach import fmt
+from coach import agenda_rules, fmt
 from web import actions
 from web.data import clean_query
 
@@ -145,6 +145,8 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
     env.filters["fr_day_short"] = fmt.day_short                          # « mar. 27 oct. »
     env.filters["dur"] = fmt.dur                                         # « 2 h 30 »
     env.filters["hm"] = _hm
+    env.globals["agenda_legend"] = [(agenda_rules.LABELS[k], v) for k, v in agenda_rules.COLORS.items()]
+    env.filters["agenda_label"] = lambda title: agenda_rules.LABELS[agenda_rules.kind_of(title)]  # « TD », « Sport »…
     discussion = actions.Discussion()
     fails: list[float] = []
     badge_cache = BadgeCache(badge_clock)

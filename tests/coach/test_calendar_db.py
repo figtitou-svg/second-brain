@@ -70,7 +70,8 @@ def test_google_create_event():
 def test_google_freebusy_converted_to_paris():
     g = GoogleCalendarClient(FakeService())
     busy = g.freebusy(dt(2026, 10, 15), dt(2026, 10, 16))
-    assert busy == [(dt(2026, 10, 15, 9), dt(2026, 10, 15, 11))]
+    assert busy == [(dt(2026, 10, 15, 9), dt(2026, 10, 15, 11)),
+                    (dt(2026, 10, 15, 14), dt(2026, 10, 15, 16))]   # jeudi : rugby imposé
     assert busy[0][0].utcoffset().total_seconds() == 7200
 
 

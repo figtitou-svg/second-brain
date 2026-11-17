@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import Callable
 
 from coach import focus as coach_focus
-from coach import courses, fmt
+from coach import agenda_rules, courses, fmt
 from coach import project_service, project_watch, projects
 from coach.db import Database
 from coach.models import Suggestion, Task
@@ -194,11 +194,11 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         if seg:
             segments.append(seg)
     for e in db.list_events("added"):
-        seg = _segment("event", e.title, COURSE, e.start, e.end, ws, we)
+        seg = _segment("event", e.title, agenda_rules.color_of(e.title), e.start, e.end, ws, we)
         if seg:
             segments.append(seg)
     for s, e, title in agenda.get(ws, we):
-        seg = _segment("course", title, COURSE, s, e, ws, we)
+        seg = _segment("course", title, agenda_rules.color_of(title), s, e, ws, we)
         if seg:
             segments.append(seg)
 
@@ -324,9 +324,9 @@ def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
             continue
         add("block", t.title, _color(colors, t.project_id), b.start, b.end, b.id if b.outcome is None else None)
     for e in db.list_events("added"):
-        add("event", e.title, COURSE, e.start, e.end)
+        add("event", e.title, agenda_rules.color_of(e.title), e.start, e.end)
     for s, e, title in agenda.get(ws, we):
-        add("course", title, COURSE, s, e)
+        add("course", title, agenda_rules.color_of(title), s, e)
     dues = [DueItem(t.title, t.due, _color(colors, t.project_id), t.id)
             for t in sorted(tasks.values(), key=lambda t: t.due or ws)
             if t.status in projects.OPEN and t.due is not None and t.due.astimezone(sched.tz).date() == day]

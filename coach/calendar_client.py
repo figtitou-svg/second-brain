@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
+from coach import agenda_rules
 from coach.courses import clean_title
 from coach.models import Block, Event, Task
 
@@ -82,6 +83,11 @@ def event_title(task: Task, level: str | None = None) -> str:
 
 def event_description(task: Task, block: Block) -> str:
     return f"task_id: {task.id}\nblock_id: {block.id}"
+
+
+def _is_imported(cal_id: str) -> bool:
+    """Calendrier abonné par adresse iCal (l'emploi du temps INSA)."""
+    return cal_id.strip().endswith("@import.calendar.google.com")
 
 
 @runtime_checkable
@@ -202,14 +208,19 @@ class GoogleCalendarClient:
             "items": [{"id": i} for i in ids],
         }
         resp = self._svc.freebusy().query(body=body).execute()
-        busy = [b for i in ids for b in resp.get("calendars", {}).get(i, {}).get("busy", [])]
-        return [
+        # emploi du temps importé : lu événement par événement, les cours jamais suivis (CM, SPE, TA) restent libres
+        busy = [b for i in ids if not _is_imported(i) for b in resp.get("calendars", {}).get(i, {}).get("busy", [])]
+        out = [
             (
                 datetime.fromisoformat(b["start"].replace("Z", "+00:00")).astimezone(TZ),
                 datetime.fromisoformat(b["end"].replace("Z", "+00:00")).astimezone(TZ),
             )
             for b in busy
         ]
+        for cal in (i for i in ids if _is_imported(i)):
+            out += [(s, e) for s, e, title in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(title)]
+        out += [(s, e) for s, e, _ in agenda_rules.recurring_between(start, end)]   # rugby…
+        return out
 
     def create_event(self, block: Block, task: Task, level: str | None = None) -> str:
         body = {
@@ -241,28 +252,37 @@ class GoogleCalendarClient:
     def update_deadline_marker(self, event_id: str, task: Task) -> None:
         self._svc.events().patch(calendarId=self._cal, eventId=event_id, body=marker_body(task)).execute()
 
+    def _timed_events(self, cal: str, start: datetime, end: datetime) -> list[tuple[datetime, datetime, str]]:
+        """Événements à heure fixe d'un calendrier (titres nettoyés), sans les blocs créés par le coach ; vide si
+        le calendrier est illisible."""
+        try:
+            items = self._svc.events().list(
+                calendarId=cal, timeMin=start.astimezone(TZ).isoformat(), timeMax=end.astimezone(TZ).isoformat(),
+                singleEvents=True, orderBy="startTime",
+                fields="items(summary,description,status,transparency,start,end)").execute().get("items", [])
+        except Exception:
+            return []
+        out = []
+        for it in items:
+            if it.get("status") == "cancelled" or it.get("transparency") == "transparent":
+                continue
+            if "dateTime" not in it.get("start", {}):  # journée entière
+                continue
+            title = it.get("summary", "(sans titre)")
+            if title.startswith((TITLE_PREFIX, LEGACY_TITLE_PREFIX)) or "event_id:" in (it.get("description") or ""):
+                continue
+            out.append((datetime.fromisoformat(it["start"]["dateTime"]).astimezone(TZ),
+                        datetime.fromisoformat(it["end"]["dateTime"]).astimezone(TZ),
+                        clean_title(title)))  # codes ADE -> « POO1 · TD »
+        return out
+
     def agenda(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime, str]]:
-        """Événements des autres calendriers (cours, sport) avec leur titre ; exclut ce que le coach a créé."""
+        """Événements des autres calendriers (cours, sport) avec leur titre ; exclut ce que le coach a créé et les
+        cours jamais suivis (CM, SPE, TA), ajoute les créneaux récurrents (rugby)."""
         out: list[tuple[datetime, datetime, str]] = []
         for cal in self._calendar_ids():
-            try:
-                items = self._svc.events().list(
-                    calendarId=cal, timeMin=start.astimezone(TZ).isoformat(), timeMax=end.astimezone(TZ).isoformat(),
-                    singleEvents=True, orderBy="startTime",
-                    fields="items(summary,description,status,transparency,start,end)").execute().get("items", [])
-            except Exception:
-                continue
-            for it in items:
-                if it.get("status") == "cancelled" or it.get("transparency") == "transparent":
-                    continue
-                if "dateTime" not in it.get("start", {}):  # journée entière
-                    continue
-                title = it.get("summary", "(sans titre)")
-                if title.startswith((TITLE_PREFIX, LEGACY_TITLE_PREFIX)) or "event_id:" in (it.get("description") or ""):
-                    continue
-                title = clean_title(title)  # codes ADE -> « POO1 · TD »
-                out.append((datetime.fromisoformat(it["start"]["dateTime"]).astimezone(TZ),
-                            datetime.fromisoformat(it["end"]["dateTime"]).astimezone(TZ), title))
+            out += [ev for ev in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(ev[2])]
+        out += agenda_rules.recurring_between(start, end)
         return sorted(set(out))
 
     def create_fixed_event(self, event: Event) -> str:

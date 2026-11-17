@@ -103,7 +103,7 @@ def test_ribbon_segments_kinds_and_colors():
     db.set_event_status(db.all_events()[0].id, "added")
     home = data.build_home(db, sched, cache, NOW)
     kinds = sorted((s.kind, s.color) for s in home.segments)
-    assert kinds == [("block", data.NO_PROJECT), ("course", data.COURSE), ("event", data.COURSE)]
+    assert kinds == [("block", data.NO_PROJECT), ("course", data.agenda_rules.COLORS["perso"]), ("event", data.agenda_rules.COLORS["perso"])]  # titres sans type
     assert all(0 <= s.left <= 100 and 0 < s.width <= 100 and s.left + s.width <= 100.001 for s in home.segments)
 
 
