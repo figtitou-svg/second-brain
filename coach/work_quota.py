@@ -33,6 +33,7 @@ QUOTAS = (
 )
 QUOTA_BLOCKS = (60, 90)      # (bloc minimum, bloc maximum) en minutes
 LUNCH_OK = True              # peut être placé pendant le repas du midi
+DAILY_MAX = 180              # au plus 3 h de job par jour
 
 
 def is_quota(task: Task) -> bool:
@@ -42,6 +43,11 @@ def is_quota(task: Task) -> bool:
 def block_limits(task: Task) -> tuple[int, int] | None:
     """(min, max) des blocs d'une tâche de quota ; None pour les autres tâches (règles générales)."""
     return QUOTA_BLOCKS if is_quota(task) else None
+
+
+def daily_max(task: Task) -> int | None:
+    """Plafond de minutes par jour pour cette tâche (heures de job), None sinon."""
+    return DAILY_MAX if is_quota(task) else None
 
 
 def skips_blocked(task: Task, label: str) -> bool:

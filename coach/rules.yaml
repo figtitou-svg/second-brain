@@ -13,8 +13,6 @@ reminder_hours:
   weekend: ["10:00", "19:00"]
 
 blocked:
-  - { day: "tuesday",   from: "18:30", to: "21:30", label: "Entraînement rugby" }
-  - { day: "thursday",  from: "18:30", to: "21:30", label: "Entraînement rugby" }
   - { day: "wednesday", from: "18:00", to: "20:00", label: "Créneau occupé (mercredi)" }
   - { day: "thursday",  from: "14:00", to: "16:00", label: "Créneau occupé (jeudi)" }
   # Repas du midi : 1 h libre chaque jour. Les 5 min de marge (buffer_minutes) s'ajoutent de part et

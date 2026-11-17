@@ -50,3 +50,13 @@ def test_store_creates_and_places_once():
     blocks = [b for b in db.list_blocks(open_only=True) if b.task_id == "quota-franck-2026-11-16"]
     assert sum(b.minutes for b in blocks) == 600
     assert all(b.start >= NOW and b.end <= datetime(2026, 11, 23, tzinfo=TZ) for b in blocks)
+
+
+def test_at_most_three_hours_a_day():
+    task = wq.week_task(wq.QUOTAS[0], date(2026, 11, 16), datetime(2026, 11, 20, 7, 0, tzinfo=TZ))  # vendredi
+    res = plan_detailed([task], [], load_rules(FROZEN), datetime(2026, 11, 20, 7, 0, tzinfo=TZ))
+    per_day = {}
+    for b in res.blocks:
+        per_day[b.start.date()] = per_day.get(b.start.date(), 0) + b.minutes
+    assert per_day and max(per_day.values()) <= 180
+    assert sum(per_day.values()) + sum(res.unplaced.values()) == 600   # vendredi -> dimanche : 9 h au plus

@@ -112,6 +112,7 @@ def plan_detailed(
             start_from = max(start_from, lead)
         remaining = task.estimated_minutes
         min_b, max_b = work_quota.block_limits(task) or (min_rule, max_rule)   # heures de job : 1 h à 1 h 30
+        per_day, mine = work_quota.daily_max(task), {}                          # heures de job : 3 h par jour au plus
         day = start_from.date()
         while remaining > 0 and day <= due.date():
             hours = (
@@ -127,6 +128,8 @@ def plan_detailed(
                 cursor = fs
                 while remaining > 0:
                     left_cap = cap - used.get(day, 0)
+                    if per_day is not None:
+                        left_cap = min(left_cap, per_day - mine.get(day, 0))
                     length = int((fe - cursor).total_seconds() // 60)
                     if not allow_split and min(length, left_cap) < remaining:
                         break  # cette plage est trop courte pour la tâche entière : on regarde la suivante
@@ -144,6 +147,7 @@ def plan_detailed(
                     result.blocks.append(blk)
                     cuts.append((blk.start - buf, blk.end + buf))
                     used[day] = used.get(day, 0) + chunk
+                    mine[day] = mine.get(day, 0) + chunk
                     remaining -= chunk
                     cursor = blk.end + buf
                 if remaining <= 0:
