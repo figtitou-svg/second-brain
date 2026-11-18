@@ -126,6 +126,9 @@ class CoachScheduler:
         freed = {(b.start, b.end) for blks in victims.values() for b in blks} | set(free or [])
         if busy_all is None:
             busy_all = self.calendar.freebusy(now, horizon)
+        # rendez-vous ajoutés par le bot : occupés même s'ils ne sont pas (ou pas encore) dans Google Agenda,
+        # sinon un bloc déplacé pour eux retomberait dessus (boucle de « 🔀 … passe avant » du 18/11)
+        busy_all = list(busy_all) + [(e.start, e.end) for e in self.db.list_events("added") if e.end > now]
         busy = [iv for iv in busy_all if iv not in freed]
         gone = {b.id for blks in victims.values() for b in blks}
         used: dict = {}
@@ -331,6 +334,17 @@ class CoachScheduler:
             reuse = {task.id: blk.calendar_event_id} if blk.calendar_event_id else None
             res = self._place([task.model_copy(update={"estimated_minutes": blk.minutes})], reuse)
             nxt = next(iter(res.blocks), None)
+            if nxt and any(nxt.start < e and nxt.end > s for s, e, _ in fixed):   # garde-fou : jamais un
+                log.error("bloc replacé sur un événement fixe (%s) : déplacement annulé", task.title)  # aller-retour
+                for b in res.blocks:
+                    if b.calendar_event_id:
+                        self.calendar.delete_event(b.calendar_event_id)
+                    self.db.delete_block(b.id)
+                if not self.db.list_blocks(task.id, open_only=True):
+                    self.db.set_task_status(task.id, "pending")
+                msgs.append(f"⚠️ {('« ' + fmt.esc(hit[2]) + ' »') if hit[2] else 'Un événement'} passe avant, et je n'ai "
+                            f"pas trouvé d'autre créneau sûr pour <b>{fmt.esc(task.title)}</b> : elle attend dans tes tâches.")
+                continue
             what = f"« {fmt.esc(hit[2])} »" if hit[2] else "Un nouvel événement"
             if nxt:
                 msgs.append(f"🔀 {what} passe avant : <b>{fmt.esc(task.title)}</b> déplacée\n{fmt.when(nxt.start)}")
