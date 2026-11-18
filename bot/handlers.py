@@ -418,6 +418,12 @@ class BotService:
                 return Reply(self.coach.hide_course(rest), [[("↩ Annuler", f"unhidec:{rest}")]])
             if action == "unhidec":
                 return Reply(self.coach.unhide_course(rest))
+            if action == "hideo":     # agenda : masquer UNE séance (clé « début UTC|titre »)
+                return Reply(self.coach.hide_occurrence(rest), [[("↩ Annuler", f"unhideo:{rest}")]])
+            if action == "unhideo":
+                return Reply(self.coach.unhide_occurrence(rest))
+            if action == "evdel":     # agenda : retirer un rendez-vous ajouté par le bot
+                return Reply(self.coach.remove_event(rest))
             if action == "pls":
                 return Reply(self.coach.schedule_step(rest))
             if action == "dur":

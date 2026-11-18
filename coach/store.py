@@ -25,7 +25,7 @@ _sched: CoachScheduler | None = None
 def configure(db: Database, scheduler: CoachScheduler) -> None:
     global _db, _sched, _interview
     _db, _sched = db, scheduler
-    agenda_rules.set_hidden_source(db.hidden_courses)   # « Masquer ce cours » : agenda et planification
+    agenda_rules.set_hidden_source(db.hidden_courses, db.hidden_occurrences)   # « Masquer… » : agenda et planning
     _interview = None
 
 
@@ -269,6 +269,33 @@ def ensure_work_quota() -> int:
         for t in new:
             log.info("heures de job : « %s » créée (%d min non placées)", t.title, res.unplaced.get(t.id, 0))
     return len(new)
+
+
+def remove_event(event_id: str) -> str:
+    """« Supprimer » un rendez-vous ajouté par le bot : il quitte l'agenda du site et Google Agenda."""
+    db, sched = _need()
+    ev = next((e for e in db.list_events("added") if e.id == event_id), None)
+    if ev is None:
+        return "Rendez-vous introuvable (déjà retiré ?)."
+    if ev.calendar_event_id:
+        try:
+            sched.calendar.delete_event(ev.calendar_event_id)
+        except Exception:  # noqa: BLE001 - déjà supprimé à la main dans Google : rien à faire de plus
+            log.warning("rendez-vous %s : suppression Google impossible", event_id, exc_info=True)
+    db.set_event_status(event_id, "removed")
+    return f"🗑 <b>{fmt.esc(ev.title)}</b> est retiré de l'agenda."
+
+
+def hide_occurrence(key: str) -> str:
+    """« Masquer cet événement » : cette séance seule disparaît (agenda et planning) ; Google n'est pas touché."""
+    _need()[0].hide_occurrence(key)
+    title = key.split("|", 1)[-1]
+    return f"🙈 <b>{fmt.esc(title)}</b> (cette séance) est masqué : ce créneau est libre."
+
+
+def unhide_occurrence(key: str) -> str:
+    _need()[0].unhide_occurrence(key)
+    return f"👀 <b>{fmt.esc(key.split('|', 1)[-1])}</b> réapparaît dans l'agenda."
 
 
 def hide_course(title: str) -> str:

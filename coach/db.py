@@ -147,6 +147,10 @@ CREATE TABLE IF NOT EXISTS task_stakes (
   reason TEXT,
   key TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS hidden_occurrences (
+  key TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS hidden_courses (
   title TEXT PRIMARY KEY,
   created_at TEXT NOT NULL
@@ -284,6 +288,16 @@ class Database:
 
     def unhide_course(self, title: str) -> bool:
         return self._exec("DELETE FROM hidden_courses WHERE title = ?", (title.strip(),)).rowcount > 0
+
+    def hide_occurrence(self, key: str) -> bool:
+        return self._exec("INSERT OR IGNORE INTO hidden_occurrences (key, created_at) VALUES (?,?)",
+                          (key, datetime.now().astimezone().isoformat())).rowcount > 0
+
+    def unhide_occurrence(self, key: str) -> bool:
+        return self._exec("DELETE FROM hidden_occurrences WHERE key = ?", (key,)).rowcount > 0
+
+    def hidden_occurrences(self) -> set[str]:
+        return {r["key"] for r in self._query("SELECT key FROM hidden_occurrences")}
 
     def hidden_courses(self) -> set[str]:
         return {r["title"] for r in self._query("SELECT title FROM hidden_courses")}

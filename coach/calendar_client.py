@@ -218,7 +218,7 @@ class GoogleCalendarClient:
             for b in busy
         ]
         for cal in (i for i in ids if _is_imported(i)):
-            out += [(s, e) for s, e, title in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(title)]
+            out += [(s, e) for s, e, title in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(title, s)]
         out += [(s, e) for s, e, _ in agenda_rules.recurring_between(start, end)]   # rugby…
         return out
 
@@ -281,7 +281,7 @@ class GoogleCalendarClient:
         cours jamais suivis (CM, SPE, TA), ajoute les créneaux récurrents (rugby)."""
         out: list[tuple[datetime, datetime, str]] = []
         for cal in self._calendar_ids():
-            out += [ev for ev in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(ev[2])]
+            out += [ev for ev in self._timed_events(cal, start, end) if not agenda_rules.is_hidden(ev[2], ev[0])]
         out += agenda_rules.recurring_between(start, end)
         return sorted(set(out))
 

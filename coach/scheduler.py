@@ -247,6 +247,10 @@ class CoachScheduler:
             msgs = []
         if msgs:
             self.notify("\n\n".join(msgs), None)
+        try:  # tâches faites : leurs créneaux quittent Google Agenda (ils ne servent plus à rien)
+            self.purge_done(now)
+        except Exception:  # noqa: BLE001
+            log.warning("nettoyage des tâches faites en échec", exc_info=True)
         try:  # couleurs de l'agenda : ne bloque jamais le reste
             self.sync_styles(now)
         except Exception:  # noqa: BLE001
@@ -486,6 +490,30 @@ class CoachScheduler:
             self.db.set_weight(subject, new_weight)
         self.sync_styles()  # l'étoile et les couleurs suivent tout de suite
         return self.focus_card(now_mode=True)
+
+    def purge_done(self, now: datetime | None = None) -> int:
+        """Créneaux d'une tâche faite (ou abandonnée) : retirés de Google Agenda ; ceux à venir sont supprimés.
+        Les heures de job restent (c'est de l'agenda, pas une tâche). Retourne le nombre de créneaux nettoyés."""
+        now = (now or self.now()).astimezone(self.tz)
+        n = 0
+        for b in self.db.list_blocks():
+            if b.task_id.startswith(work_quota.PREFIX):
+                continue
+            task = self.db.get_task(b.task_id)
+            finished = task is not None and task.status in ("done", "dropped")
+            if not (b.outcome == "done" or finished):
+                continue
+            if b.calendar_event_id:
+                try:
+                    self.calendar.delete_event(b.calendar_event_id)
+                except Exception:  # noqa: BLE001 - déjà supprimé à la main : on oublie l'événement quand même
+                    log.warning("créneau %s : suppression Google impossible", b.id, exc_info=True)
+                self.db.set_block_event(b.id, None)
+                n += 1
+            if b.outcome is None and finished and b.start > now:      # créneau à venir d'une tâche finie
+                self.db.delete_block(b.id)
+                n += 1
+        return n
 
     def sync_styles(self, now: datetime | None = None) -> None:
         """Aligne titre et couleur des blocs ouverts sur l'importance actuelle ; ne patche que ce qui a changé.

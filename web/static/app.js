@@ -659,7 +659,13 @@
     if (d.task && (d.block || d.kind === "due")) {
       acts.append(sheetButton("📅 Demain", "tpo:" + d.task), sheetButton("🗓 Semaine prochaine", "tnw:" + d.task));
     }
-    if (d.hide) acts.append(sheetButton("🙈 Masquer ce cours", "hidec:" + d.hide));
+    if (d.event) {
+      const del = sheetButton("🗑 Supprimer de l'agenda", "evdel:" + d.event);
+      del.dataset.confirm = "Retirer « " + (d.title || "") + " » de l'agenda (et de Google Agenda) ?";
+      acts.append(del);
+    }
+    if (d.hideone) acts.append(sheetButton("🙈 Masquer cet événement", "hideo:" + d.hideone));
+    if (d.hide) acts.append(sheetButton("🙈 Masquer ce cours (toutes les séances)", "hidec:" + d.hide));
     if (d.task) {
       const a = document.createElement("a"); a.className = "button"; a.href = "/taches/" + encodeURIComponent(d.task);
       a.textContent = "Ouvrir la tâche"; acts.append(a);

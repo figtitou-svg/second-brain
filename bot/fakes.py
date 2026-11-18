@@ -107,6 +107,18 @@ class FakeCoach:
         self.calls.append(("ignore_proposed",))
         return 0
 
+    def hide_occurrence(self, key: str) -> str:
+        self.calls.append(("hide_occurrence", key))
+        return f"🙈 {key}"
+
+    def unhide_occurrence(self, key: str) -> str:
+        self.calls.append(("unhide_occurrence", key))
+        return f"👀 {key}"
+
+    def remove_event(self, event_id: str) -> str:
+        self.calls.append(("remove_event", event_id))
+        return f"🗑 {event_id}"
+
     def hide_course(self, title: str) -> str:
         self.calls.append(("hide_course", title))
         return f"🙈 {title}"

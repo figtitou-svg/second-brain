@@ -204,8 +204,10 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
     ws, we = day_window(sched, now)
     tasks = {t.id: t for t in db.list_tasks()}
     colors = project_colors(db)
-    blocks = sorted((b for b in db.list_blocks() if b.outcome in (None, "done") and b.task_id in tasks),
-                    key=lambda b: b.start)
+    blocks = sorted((b for b in db.list_blocks() if b.task_id in tasks and (b.outcome is None or (
+                        b.outcome == "done" and work_quota.is_quota(tasks[b.task_id])))
+                     and (work_quota.is_quota(tasks[b.task_id]) or tasks[b.task_id].status not in ("done", "dropped"))),
+                    key=lambda b: b.start)                     # tâches faites : hors de la frise
     segments: list[Segment] = []
     for b in blocks:
         t = tasks[b.task_id]
@@ -223,6 +225,8 @@ def build_home(db: Database, sched, agenda: AgendaCache, now: datetime) -> Home:
         if seg:
             segments.append(seg)
     for s, e, title in agenda.get(ws, we):
+        if agenda_rules.is_hidden(title, s):
+            continue
         seg = _segment("course", title, agenda_rules.color_of(title), s, e, ws, we)
         if seg:
             segments.append(seg)
@@ -363,6 +367,8 @@ class AgendaItem:
     block_id: str | None = None   # seulement pour un bloc ouvert (boutons Fait / Reporter)
     task_id: str | None = None    # bloc : sa tâche (fiche de l'agenda : reporter, ouvrir la tâche)
     from_mail: bool = False       # rendez-vous tiré d'un mail
+    event_id: str | None = None   # rendez-vous ajouté par le bot (fiche : « Supprimer »)
+    hide_key: str | None = None   # événement d'un agenda (cours, Google, rugby) : « Masquer cet événement »
 
 
 @dataclass(frozen=True)
@@ -421,18 +427,22 @@ def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
     items: list[AgendaItem] = []
 
     def add(kind: str, title: str, color: str, s: datetime, e: datetime, block_id: str | None = None,
-            task_id: str | None = None, from_mail: bool = False) -> None:
+            task_id: str | None = None, from_mail: bool = False, event_id: str | None = None,
+            hide_key: str | None = None) -> None:
         s2, e2 = max(s, ws), min(e, we)
         if e2 <= s2:
             return
         top = _pct(s2, ws, we)
         items.append(AgendaItem(kind, title, color, s, e, round(top, 2), round(_pct(e2, ws, we) - top, 2),
-                                block_id=block_id, task_id=task_id, from_mail=from_mail))
+                                block_id=block_id, task_id=task_id, from_mail=from_mail, event_id=event_id,
+                                hide_key=hide_key))
 
     for b in db.list_blocks():
         t = tasks.get(b.task_id)
         if t is None or b.outcome not in (None, "done"):
             continue
+        if not work_quota.is_quota(t) and (b.outcome == "done" or t.status in ("done", "dropped")):
+            continue                                   # tâche faite : elle quitte l'agenda
         if work_quota.is_quota(t):   # heures de job : un créneau d'agenda, pas une tâche (aucune action)
             name = work_quota.label(t)
             add("event", name, agenda_rules.color_of(name), b.start, b.end)
@@ -441,10 +451,10 @@ def agenda_day(db: Database, sched, agenda: AgendaCache, day: date) -> DayView:
             task_id=t.id)
     for e in db.list_events("added"):
         add("event", e.title, agenda_rules.color_of(e.title), e.start, e.end,
-            from_mail=(e.source_id or "").startswith(("gmail:", "insa:")))
+            from_mail=(e.source_id or "").startswith(("gmail:", "insa:")), event_id=e.id)
     for s, e, title in agenda.get(ws, we):
-        if not agenda_rules.is_hidden(title):   # masqué depuis l'agenda : effet immédiat malgré le cache Google
-            add("course", title, agenda_rules.color_of(title), s, e)
+        if not agenda_rules.is_hidden(title, s):   # masqué depuis l'agenda : effet immédiat malgré le cache Google
+            add("course", title, agenda_rules.color_of(title), s, e, hide_key=agenda_rules.occurrence_key(title, s))
     dues = [DueItem(t.title, t.due, _color(colors, t.project_id), t.id)
             for t in sorted(tasks.values(), key=lambda t: t.due or ws)
             if t.status in projects.OPEN and t.due is not None and t.due.astimezone(sched.tz).date() == day]

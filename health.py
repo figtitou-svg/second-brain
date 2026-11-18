@@ -24,7 +24,7 @@ LABELS = {"gmail": "Gmail", "insa_mail": "Mail INSA", "drive": "Drive", "notion"
           "notion_cases": "Cases Notion (Security+)", "coach": "Agenda / relances", "llm": "Modèles IA",
           "stakes": "Importance des tâches (IA)", "job_hours": "Heures de job (Franck)", "journal": "Journal (Google Docs)",
           "bot": "Bot Telegram", "google_auth": "Autorisation Google", "projects": "Assistant de projet",
-          "pwatch": "Surveillance des projets"}
+          "pwatch": "Surveillance des projets", "repeat": "Messages répétés (anti-boucle)"}
 # services qui passent par l'autorisation Google : s'ils marchent, elle n'est plus en panne
 GOOGLE_JOBS = frozenset({"gmail", "drive", "coach"})
 

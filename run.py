@@ -21,6 +21,7 @@ load_dotenv()
 import health  # noqa: E402
 import journal  # noqa: E402
 import quota  # noqa: E402
+import repeat_guard  # noqa: E402
 from bot.handlers import BotService  # noqa: E402
 from bot.main import build_application, load_config  # noqa: E402
 from bot.ports import CoachAdapter, MemoryAdapter, RouterAdapter  # noqa: E402
@@ -103,7 +104,11 @@ def main() -> None:
     bus = web_live.Bus()                    # le direct du site : un seul bus, partagé par notify et la page web
     notify = notifylog.logged(_telegram_notify(cfg.token, cfg.allowed_user_id), lambda: db, _tr,
                               on_logged=lambda i, text, rows: bus.publish("bot", {"id": i, "text": text, "buttons": rows}))
+    # anti-répétition : un message envoyé en boucle est bloqué au 3e envoi identique en 2 h, et signalé
+    notify = guard = repeat_guard.RepeatGuard(notify)
     hl = health.Health(notify)
+    guard.on_block = lambda key, n: hl.fail("repeat", RuntimeError(f"message envoyé {n} fois en 2 h : {key[:100]}"))
+    guard.on_clear = lambda: hl.ok("repeat")
     health.set_instance(hl)
     health.startup_check(notify)
 

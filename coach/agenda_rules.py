@@ -41,18 +41,29 @@ _KINDS = (
 _extra: Callable[[], set[str]] | None = None   # cours masqués depuis l'agenda (lus dans la base)
 
 
-def set_hidden_source(fn: Callable[[], set[str]] | None) -> None:
-    global _extra
-    _extra = fn
+_once: Callable[[], set[str]] | None = None    # séances masquées une par une (« Masquer cet événement »)
 
 
-def is_hidden(title: str) -> bool:
+def set_hidden_source(fn: Callable[[], set[str]] | None, once: Callable[[], set[str]] | None = None) -> None:
+    global _extra, _once
+    _extra, _once = fn, once
+
+
+def occurrence_key(title: str, start: datetime) -> str:
+    """Identifie UNE séance : titre + début en UTC (le même quel que soit le fuseau d'affichage)."""
+    return f"{start.astimezone(ZoneInfo('UTC')).strftime('%Y-%m-%dT%H:%M')}|{title.strip()}"
+
+
+def is_hidden(title: str, start: datetime | None = None) -> bool:
+    """Cours jamais suivi, cours masqué (toutes ses séances) ou, avec `start`, cette séance masquée."""
     t = title.strip()
     if HIDDEN.search(t):
         return True
     try:
-        return _extra is not None and t in _extra()
-    except Exception:  # noqa: BLE001 - base illisible : le cours reste affiché, rien ne casse
+        if _extra is not None and t in _extra():
+            return True
+        return start is not None and _once is not None and occurrence_key(t, start) in _once()
+    except Exception:  # noqa: BLE001 - base illisible : l'événement reste affiché, rien ne casse
         return False
 
 
@@ -73,7 +84,7 @@ def color_of(title: str) -> str:
 
 
 def recurring_between(start: datetime, end: datetime) -> list[tuple[datetime, datetime, str]]:
-    """Occurrences des créneaux récurrents qui chevauchent [start, end[."""
+    """Occurrences des créneaux récurrents qui chevauchent [start, end[ (sauf une séance masquée)."""
     out = []
     d: date = start.astimezone(TZ).date() - timedelta(days=1)
     last = end.astimezone(TZ).date()
@@ -81,7 +92,7 @@ def recurring_between(start: datetime, end: datetime) -> list[tuple[datetime, da
         for title, wd, t0, t1 in RECURRING:
             if d.weekday() == wd:
                 s, e = datetime.combine(d, t0, tzinfo=TZ), datetime.combine(d, t1, tzinfo=TZ)
-                if e > start and s < end:
+                if e > start and s < end and not is_hidden(title, s):
                     out.append((s, e, title))
         d += timedelta(days=1)
     return out

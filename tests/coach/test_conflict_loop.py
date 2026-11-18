@@ -28,3 +28,48 @@ def test_moved_block_never_lands_back_on_the_event():
     new = db.list_blocks(t.id, open_only=True)[0]
     assert not (new.start < ev.end and new.end > ev.start)    # le nouveau créneau évite le rendez-vous
     assert s.resolve_conflicts(NOW - timedelta(minutes=1)) == []                      # et rien ne bouge au passage suivant
+
+
+def _env():
+    from coach import store
+    db = Database(":memory:")
+    cal = FakeCalendarClient()
+    s = CoachScheduler(db, cal, load_rules(FROZEN), lambda t, b=None: None, now_fn=lambda: NOW)
+    store.configure(db, s)
+    return db, s, cal
+
+
+def test_done_task_leaves_google_agenda_and_future_slots_go():
+    db, s, cal = _env()
+    t = Task(title="[Esp] Fiche", estimated_minutes=240, due=NOW + timedelta(days=5))
+    s.schedule_tasks([t])
+    blocks = db.list_blocks(t.id, open_only=True)
+    assert blocks and all(b.calendar_event_id in cal.events for b in blocks)
+    db.set_task_status(t.id, "done")
+    assert s.purge_done(NOW) >= len(blocks)
+    assert not cal.events and not [b for b in db.list_blocks(t.id, open_only=True) if b.start > NOW]
+    assert s.purge_done(NOW) == 0                                  # rien à refaire au passage suivant
+
+
+def test_remove_bot_event_and_hide_one_occurrence():
+    from bot.fakes import FakeMemory, FakeRouter
+    from bot.handlers import BotService
+    from bot.ports import CoachAdapter
+    from coach import agenda_rules
+    db, s, cal = _env()
+    ev = Event(title="Élections au conseil de département", start=NOW + timedelta(days=1),
+               end=NOW + timedelta(days=1, hours=6))
+    db.add_event_if_new(ev)
+    db.set_event_status(ev.id, "added")
+    svc = BotService(CoachAdapter(), FakeMemory(), FakeRouter("x"), 1)
+    assert "retiré" in svc.on_callback(f"evdel:{ev.id}").text and db.list_events("added") == []
+    start = NOW + timedelta(days=1, hours=2)
+    key = agenda_rules.occurrence_key("BDR · TD", start)
+    try:
+        r = svc.on_callback(f"hideo:{key}")
+        assert r.buttons == [[("↩ Annuler", f"unhideo:{key}")]]
+        assert agenda_rules.is_hidden("BDR · TD", start) and not agenda_rules.is_hidden("BDR · TD", start + timedelta(days=7))
+        svc.on_callback(f"unhideo:{key}")
+        assert not agenda_rules.is_hidden("BDR · TD", start)
+    finally:
+        agenda_rules.set_hidden_source(None)

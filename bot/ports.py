@@ -51,6 +51,9 @@ class CoachPort(Protocol):
     def restore_task(self, task_id: str) -> str: ...      # annuler un « fait » / « ignoré »
     def dismiss_info(self, info_id: str) -> str: ...      # « 👎 Pas utile » sur une info
     def hide_course(self, title: str) -> str: ...         # « Masquer ce cours » (agenda)
+    def hide_occurrence(self, key: str) -> str: ...       # « Masquer cet événement » (une séance)
+    def unhide_occurrence(self, key: str) -> str: ...
+    def remove_event(self, event_id: str) -> str: ...     # retirer un rendez-vous ajouté par le bot
     def unhide_course(self, title: str) -> str: ...
     def schedule_step(self, milestone_id: str) -> str: ...
     def report_outcome(self, block_id: str, outcome: str) -> str: ...  # done|not_finished|rescheduled|next_week
@@ -171,6 +174,15 @@ class CoachAdapter:
 
     def hide_course(self, title: str) -> str:
         return self._store.hide_course(title)
+
+    def hide_occurrence(self, key: str) -> str:
+        return self._store.hide_occurrence(key)
+
+    def unhide_occurrence(self, key: str) -> str:
+        return self._store.unhide_occurrence(key)
+
+    def remove_event(self, event_id: str) -> str:
+        return self._store.remove_event(event_id)
 
     def unhide_course(self, title: str) -> str:
         return self._store.unhide_course(title)
