@@ -55,6 +55,20 @@ class FakeCoach:
     def extract_items(self, text: str, source_id: str, sensitivity: Sensitivity) -> tuple[list[Any], list[Any]]:
         return self.extract_tasks(text, source_id, sensitivity), list(getattr(self, "events", []))
 
+    def add_rdv(self, text: str, sensitivity: Sensitivity) -> tuple[str, Any, str | None]:
+        self.calls.append(("add_rdv", text, sensitivity))
+        if "sans heure" in text:
+            return "🕐 À quelle heure ?", [[("14h", "rdvh:ev1:1400")]], "ev1"
+        return f"📅 Ajouté : {text}", [], None
+
+    def rdv_set_time(self, event_id: str, hh: int, mm: int) -> str:
+        self.calls.append(("rdv_set_time", event_id, hh, mm))
+        return f"📅 Ajouté à {hh:02d}:{mm:02d}"
+
+    def read_photo(self, path: str) -> str:
+        self.calls.append(("read_photo", path))
+        return getattr(self, "photo_text", "")
+
     def add_task(self, text: str, sensitivity: Sensitivity) -> list[Any]:
         self.calls.append(("add_task", text, sensitivity))
         return self.extract_tasks(text, "task:x", sensitivity)

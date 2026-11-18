@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
-from coach import agenda_rules, categories, priorities, work_quota
+from coach import agenda_rules, categories, priorities, rdv, work_quota
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -269,6 +269,72 @@ def ensure_work_quota() -> int:
         for t in new:
             log.info("heures de job : « %s » créée (%d min non placées)", t.title, res.unplaced.get(t.id, 0))
     return len(new)
+
+
+_rdv_llm = None
+_vision = None
+
+
+def configure_rdv(llm, vision=None) -> None:
+    """IA du /rdv (texte -> rendez-vous) et lecture des photos (image -> texte)."""
+    global _rdv_llm, _vision
+    _rdv_llm, _vision = llm, vision
+
+
+PHOTO_PROMPT = (
+    "Retranscris en français tout le texte utile de cette image (dates, heures, lieux, noms, consignes), puis "
+    "décris en une phrase ce que c'est (affiche, convocation, capture d'écran de message…). Texte brut, sans "
+    "mise en forme."
+)
+
+
+def read_photo(path: str) -> str:
+    """Ce qu'on lit sur la photo (texte + une phrase de description) ; vide si la lecture est impossible."""
+    if _vision is None:
+        return ""
+    try:
+        return (_vision(path, PHOTO_PROMPT) or "").strip()
+    except Exception:  # noqa: BLE001 - quota ou réseau : la photo reste rangée, rien n'est perdu
+        log.warning("lecture de la photo impossible", exc_info=True)
+        return ""
+
+
+def add_rdv(text: str, sensitivity: str) -> tuple[str, list, str | None]:
+    """« /rdv … » : (message, boutons, id du rendez-vous qui attend son heure ou None)."""
+    db, sched = _need()
+    llm = _rdv_llm
+    if llm is None:
+        return "⚠️ L'IA des rendez-vous n'est pas configurée.", [], None
+    p = rdv.parse(text, lambda prompt, **k: llm(prompt, sensitivity=sensitivity, **k), sched.now())
+    if p is None:
+        return ("🤔 Je n'ai pas compris le rendez-vous. Essaie par exemple : "
+                "<code>/rdv dentiste jeudi 14h30 à Villeurbanne</code>"), [], None
+    if p.day is None:
+        return (f"📅 <b>{fmt.esc(p.title)}</b> : je n'ai pas trouvé de date. Renvoie-le avec la date, "
+                f"par exemple <code>/rdv {fmt.esc(p.title.lower())} jeudi 14h</code>"), [], None
+    source = "rdv:" + hashlib.sha256(f"{text}|{sched.now().isoformat()}".encode()).hexdigest()[:12]
+    ev = rdv.to_event(p, source)
+    db.add_event_if_new(ev)
+    if p.start is None:                                 # pas d'heure écrite : on la demande
+        db.set_event_status(ev.id, "draft")
+        return (f"📅 <b>{fmt.esc(ev.title)}</b> · {fmt.day_long(ev.start)}"
+                + (f"\n📍 {fmt.esc(ev.location)}" if ev.location else "")
+                + "\n🕐 À quelle heure ? Choisis ci-dessous, ou réponds par exemple <code>16h30</code>."),\
+            rdv.hour_buttons(ev.id), ev.id
+    return add_event(ev.id), [], None
+
+
+def rdv_set_time(event_id: str, hh: int, mm: int) -> str:
+    """Heure choisie pour un rendez-vous qui l'attendait : il part dans l'agenda."""
+    db, _ = _need()
+    ev = db.get_event(event_id)
+    if ev is None:
+        return "Rendez-vous introuvable."
+    if ev.calendar_event_id:
+        return fmt.event_card(ev, "📅 <b>Déjà dans l'agenda</b>")
+    new = rdv.at_hour(ev, hh, mm)
+    db.set_event_times(event_id, new.start, new.end)
+    return add_event(event_id)
 
 
 def remove_event(event_id: str) -> str:

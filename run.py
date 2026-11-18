@@ -142,6 +142,9 @@ def main() -> None:
     add("job_hours", store.ensure_work_quota, 60)                   # 10 h / semaine pour Franck : créées et placées
     # enjeu des tâches (1 à 5) noté par Groq d'abord : titre, catégorie, projet, échéance seulement (jamais un mail)
     store.configure_stakes(functools.partial(router.complete, sensitivity="public", prefer_fallback=True, timeout=40))
+    # /rdv : texte -> rendez-vous (même confidentialité que les notes) ; photos lues par une IA d'image (Groq, Gemini)
+    store.configure_rdv(functools.partial(router.complete, prefer_fallback=True, timeout=40),
+                        functools.partial(router.read_image, timeout=60))
     add("stakes", lambda: log.info("enjeu : %d tâche(s) notée(s)", store.rate_stakes()), 30)
 
     if not args.no_gmail:

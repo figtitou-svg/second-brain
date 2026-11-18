@@ -65,13 +65,12 @@ def test_linkify_other_links_and_escaping():
 def test_commands_map_to_the_same_methods_as_telegram(monkeypatch):
     s, _ = svc()
     called = []
-    for name in ("today", "tasks", "replan", "focus", "projet", "projets", "annuler", "week", "quota", "help"):
+    for name in ("today", "focus", "projet", "annuler", "help"):
         monkeypatch.setattr(s, name, lambda n=name: called.append(n) or [Reply(n)])
-    for cmd in ("/today", "/tasks", "/replan", "/focus", "/projet", "/projets", "/annuler", "/semaine", "/quota",
-                "/help", "/start"):
+    for cmd in ("/today", "/focus", "/projet", "/annuler", "/help", "/start"):
         actions.submit(s, cmd)
-    assert called == ["today", "tasks", "replan", "focus", "projet", "projets", "annuler", "week", "quota", "help",
-                      "help"]
+    assert called == ["today", "focus", "projet", "annuler", "help", "help"]
+    assert "inconnue" in actions.submit(s, "/replan")[0].text            # commandes retirées
 
 
 def test_commands_with_arguments(monkeypatch):
@@ -79,12 +78,15 @@ def test_commands_with_arguments(monkeypatch):
     seen = []
     monkeypatch.setattr(s, "ask", lambda q: seen.append(("ask", q)) or [Reply("r")])
     monkeypatch.setattr(s, "note", lambda t: seen.append(("note", t)) or [Reply("r")])
-    monkeypatch.setattr(s, "done", lambda i: seen.append(("done", i)) or [Reply("r")])
+    monkeypatch.setattr(s, "rdv", lambda t: seen.append(("rdv", t)) or [Reply("r")])
+    monkeypatch.setattr(s, "task", lambda t: seen.append(("task", t)) or [Reply("r")])
     actions.submit(s, "/ask  j'ai quoi demain ?")
     actions.submit(s, "/note le code est 4721")
-    actions.submit(s, "/done t1 en trop")
-    actions.submit(s, "/done")
-    assert seen == [("ask", "j'ai quoi demain ?"), ("note", "le code est 4721"), ("done", "t1"), ("done", "")]
+    actions.submit(s, "/rdv dentiste jeudi 14h")
+    actions.submit(s, "/event match samedi")
+    actions.submit(s, "/task appeler la banque")
+    assert seen == [("ask", "j'ai quoi demain ?"), ("note", "le code est 4721"), ("rdv", "dentiste jeudi 14h"),
+                    ("rdv", "match samedi"), ("task", "appeler la banque")]
 
 
 def test_unknown_command_and_free_text(monkeypatch):

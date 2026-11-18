@@ -139,6 +139,30 @@ def complete(
     return result
 
 
+def read_image(image_path: str, prompt: str, *, timeout: float | None = None) -> str:
+    """Lit une image avec un modèle qui comprend les images (cloud : l'utilisateur a choisi que ses photos soient
+    lues) : LLM_VISION_MODEL (Groq) puis LLM_VISION_FALLBACK (Gemini). Retourne le texte de la réponse."""
+    import base64
+    import mimetypes
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(image_path)
+    mime = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    data = base64.b64encode(path.read_bytes()).decode()
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}},
+    ]}]
+    chain = [_env("LLM_VISION_MODEL", "groq/qwen/qwen3.8-27b"),
+             _env("LLM_VISION_FALLBACK", "gemini/gemini-2.5-flash")]
+    try:
+        result, _ = fallback.run_chain(chain, messages, False, _log_usage,  # type: ignore[arg-type]
+                                       _timeout(timeout, "LLM_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT))
+    except fallback.ChainExhausted as exc:
+        raise LLMUnavailableError(str(exc)) from exc
+    return result
+
+
 def transcribe(audio_path: str) -> str:
     """Transcription 100 % locale (faster-whisper) par défaut.
 

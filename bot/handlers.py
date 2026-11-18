@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import tempfile
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from coach import fmt
+from coach import rdv as rdv_rules
 
 from . import dates
 from .ports import CoachPort, MemoryPort, NotReadyError, RouterPort, Sensitivity
@@ -33,21 +35,17 @@ class Reply:
 
 # (commande, description courte) : source unique du /help et du menu « / » de Telegram
 COMMANDS: list[tuple[str, str]] = [
-    ("ask", "Poser une question à ta mémoire (documents, notes, agenda)"),
     ("today", "Agenda et tâches du jour"),
-    ("replan", "Refaire tout le planning (urgent d'abord)"),
     ("focus", "Tes priorités : une tâche par domaine, la plus importante d'abord"),
-    ("projet", "Créer un projet : je t'interroge pour le définir"),
-    ("projets", "Avancement de tes projets"),
-    ("annuler", "Abandonner l'entretien de projet en cours"),
-    ("tasks", "Tâches ouvertes, avec boutons fait / reporter / semaine prochaine"),
-    ("semaine", "Récap de la semaine"),
     ("task", "Ajouter une tâche : /task [Cha] recontacter PE avant vendredi"),
+    ("rdv", "Ajouter un rendez-vous : /rdv dentiste jeudi 14h (ou une photo avec la légende /rdv)"),
     ("note", "Garder une info telle quelle (ni tâche ni rendez-vous)"),
-    ("done", "Marquer une tâche terminée : /done identifiant"),
-    ("quota", "Consommation des API IA gratuites du jour"),
+    ("ask", "Poser une question à ta mémoire (documents, notes, agenda)"),
+    ("projet", "Créer un projet : je t'interroge pour le définir"),
+    ("annuler", "Abandonner l'entretien de projet en cours"),
     ("help", "Afficher cette liste"),
 ]
+RDV_ALIASES = ("rdv", "event")
 
 
 def task_buttons(task_id: str) -> Buttons:
@@ -145,6 +143,19 @@ class BotService:
             return ""
 
     # --- entrées ---
+    def rdv(self, text: str) -> list[Reply]:
+        """« /rdv … » (ou /event) : crée le rendez-vous écrit ; sans heure, la demande (boutons ou « 16h30 »)."""
+        text = text.strip()
+        if not text:
+            return [Reply("📅 Écris le rendez-vous après /rdv, par exemple :\n<code>/rdv dentiste jeudi 14h30</code>\n"
+                          "Ou envoie une photo (affiche, convocation) avec la légende <code>/rdv</code>.")]
+        try:
+            msg, buttons, pending = self.coach.add_rdv(text, _note_sensitivity())
+        except NotReadyError as exc:
+            return [Reply(f"⚠️ Coach indisponible ({fmt.esc(exc)}).")]
+        self._rdv_wait = pending
+        return [Reply(msg, buttons or [])]
+
     def task(self, text: str) -> list[Reply]:
         """« /task … » : ajoute la tâche écrite après (catégorie, date et durée comprises), puis la place si elle
         n'a pas de date. Sans texte : comment s'en servir."""
@@ -263,6 +274,10 @@ class BotService:
                 msgs = []
             if msgs:  # vide (brouillon expiré entre-temps) : on retombe sur le flux normal, rien n'est perdu
                 return self._replies(msgs)
+        hm = rdv_rules.HOUR_RE.match(text) if getattr(self, "_rdv_wait", None) else None
+        if hm and int(hm[1]) < 24 and int(hm[2] or 0) < 60:  # réponse à « À quelle heure ? » d'un /rdv
+            event_id, self._rdv_wait = self._rdv_wait, None
+            return [Reply(self.coach.rdv_set_time(event_id, int(hm[1]), int(hm[2] or 0)))]
         pm = POSTPONE_RE.match(text)
         if pm:  # « reporte IA au 4 janvier » : report à une date libre
             done = self.postpone_to(pm[1], pm[2])
@@ -304,6 +319,47 @@ class BotService:
         return [Reply(f"🎙 <b>Transcription</b>\n<i>{fmt.esc(text)}</i>")] + self.on_text(text, source="vocal")
 
     def on_document(self, path: str, filename: str, caption: str | None, kind: str) -> list[Reply]:
+        cap = (caption or "").strip()
+        forced = bool(re.match(r"^/(rdv|event)\b", cap, re.I))
+        if kind == "photo" and forced:      # « /rdv » en légende : un rendez-vous, rien d'autre
+            seen = self._read_photo(path)
+            extra = re.sub(r"^/(rdv|event)\b", "", cap, flags=re.I).strip()
+            if not seen and not extra:
+                return [Reply("📷 Je n'ai pas pu lire la photo. Écris le rendez-vous : <code>/rdv dentiste jeudi 14h</code>")]
+            return self.rdv("\n".join(x for x in (extra, seen) if x))
+        replies = self._index_document(path, filename, caption, kind)
+        if kind == "photo":                 # toute photo est lue : rendez-vous et tâches qu'elle annonce
+            seen = self._read_photo(path)
+            if seen:
+                replies += self._from_photo(seen, cap)
+        return replies
+
+    def _read_photo(self, path: str) -> str:
+        try:
+            return self.coach.read_photo(path)
+        except Exception:  # noqa: BLE001 - lecture impossible : la photo reste rangée
+            log.warning("lecture de photo impossible", exc_info=True)
+            return ""
+
+    def _from_photo(self, seen: str, caption: str) -> list[Reply]:
+        """Rendez-vous (proposés, comme ceux des mails) et tâches lus sur une photo."""
+        text = "\n".join(x for x in (caption, seen) if x)
+        source = "photo:" + hashlib.sha1(text.encode()).hexdigest()[:12]
+        try:   # le texte vient déjà d'une IA en ligne (l'utilisateur l'a choisi) : extraction « public »
+            tasks, events = self.coach.extract_items(text, source, "public")
+        except NotReadyError:
+            return []
+        except Exception:  # noqa: BLE001
+            log.warning("extraction depuis la photo impossible", exc_info=True)
+            return []
+        out = [Reply(fmt.event_card(e, "📷 <b>Rendez-vous sur la photo</b>"), event_buttons(e.id)) for e in events]
+        out += [self._task_card(t, "📷 <b>Tâche sur la photo</b>") for t in tasks]
+        if not out:
+            out.append(Reply("📷 Photo lue : aucun rendez-vous ni tâche. Si c'en est un, renvoie-la avec la légende "
+                             "<code>/rdv</code>."))
+        return out
+
+    def _index_document(self, path: str, filename: str, caption: str | None, kind: str) -> list[Reply]:
         guess = guess_sensitivity(filename, caption)
         sens: Sensitivity = guess or "private"  # défaut sûr en attendant la réponse
         try:
@@ -418,6 +474,12 @@ class BotService:
                 return Reply(self.coach.hide_course(rest), [[("↩ Annuler", f"unhidec:{rest}")]])
             if action == "unhidec":
                 return Reply(self.coach.unhide_course(rest))
+            if action == "replanall":   # Accueil vide : « Planifier ma journée »
+                return Reply(self.coach.replan_all())
+            if action == "rdvh":      # /rdv : heure choisie (« rdvh:<id>:1430 »)
+                event_id, _, hhmm = rest.rpartition(":")
+                self._rdv_wait = None
+                return Reply(self.coach.rdv_set_time(event_id, int(hhmm[:2]), int(hhmm[2:] or 0)))
             if action == "hideo":     # agenda : masquer UNE séance (clé « début UTC|titre »)
                 return Reply(self.coach.hide_occurrence(rest), [[("↩ Annuler", f"unhideo:{rest}")]])
             if action == "unhideo":
@@ -619,6 +681,11 @@ class TelegramHandlers:
         if not self._allowed(update) or not update.message:
             return
         await self._send(update, await asyncio.to_thread(self.service.task, " ".join(context.args or [])))
+
+    async def rdv(self, update: Any, context: Any) -> None:
+        if not self._allowed(update) or not update.message:
+            return
+        await self._send(update, await asyncio.to_thread(self.service.rdv, " ".join(context.args or [])))
 
     async def note(self, update: Any, context: Any) -> None:
         if not self._allowed(update) or not update.message:

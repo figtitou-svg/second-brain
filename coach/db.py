@@ -452,6 +452,9 @@ class Database:
         """Tous les rendez-vous connus, quel que soit leur statut (pour ne jamais en reproposer un doublon)."""
         return [self._event(r) for r in self._query("SELECT * FROM events ORDER BY start")]
 
+    def set_event_times(self, event_id: str, start: datetime, end: datetime) -> None:
+        self._exec("UPDATE events SET start=?, end=? WHERE id=?", (start.isoformat(), end.isoformat(), event_id))
+
     def set_event_status(self, event_id: str, status: str, calendar_event_id: str | None = None) -> None:
         self._exec("UPDATE events SET status=?, calendar_event_id=COALESCE(?, calendar_event_id) WHERE id=?",
                    (status, calendar_event_id, event_id))

@@ -72,8 +72,7 @@ def linkify(text: str) -> str:
 
 
 # commande -> méthode de BotService, exactement comme les gestionnaires Telegram
-_NO_ARG = {"today": "today", "tasks": "tasks", "replan": "replan", "focus": "focus", "projet": "projet",
-           "projets": "projets", "annuler": "annuler", "semaine": "week", "quota": "quota", "help": "help",
+_NO_ARG = {"today": "today", "focus": "focus", "projet": "projet", "annuler": "annuler", "help": "help",
            "start": "help"}
 
 
@@ -94,8 +93,8 @@ def submit(svc: BotService, text: str) -> list[Reply]:
         return svc.note(rest)
     if name == "task":
         return svc.task(rest)
-    if name == "done":
-        return svc.done(rest.split()[0] if rest else "")
+    if name in ("rdv", "event"):
+        return svc.rdv(rest)
     return [Reply(f"❓ Commande inconnue : /{html.escape(name)}. Tape /help pour la liste.")]
 
 

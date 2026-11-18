@@ -295,7 +295,7 @@ def test_home_empty_state_offers_replan():
     async def scenario(c):
         await login(c)
         page = await (await c.get("/")).text()
-        assert "Rien de prévu pour l'instant" in page and 'data-say="/replan"' in page
+        assert "Rien de prévu pour l'instant" in page and 'data-cb="replanall"' in page
     run(app, scenario)
 
 
@@ -328,7 +328,7 @@ def test_discussion_lists_command_shortcuts_and_reply_buttons():
         token = await csrf_of(c)
         await c.post("/say", data={"text": "/focus"}, headers={"X-CSRF": token})
         page = await (await c.get("/discussion")).text()
-        assert 'data-say="/replan"' in page and 'data-cb="td:t1"' in page
+        assert 'data-say="/rdv"' in page and 'data-say="/replan"' not in page and 'data-cb="td:t1"' in page
     run(app, scenario)
 
 

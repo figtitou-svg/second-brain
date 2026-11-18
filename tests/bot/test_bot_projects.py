@@ -31,9 +31,9 @@ def upd(msg, user_id=ALLOWED):
 def test_commands_are_registered_in_menu_and_help():
     svc, *_ = make()
     names = {n for n, _ in COMMANDS}
-    assert {"projet", "projets", "annuler"} <= names
+    assert {"projet", "annuler"} <= names and "projets" not in names     # /projets retiré : avancement sur le site
     text = svc.help()[0].text
-    assert "/projet " in text and "/projets " in text and "/annuler " in text
+    assert "/projet " in text and "/annuler " in text and "/projets " not in text
 
 
 def test_projet_starts_the_interview_and_projets_shows_the_overview():
