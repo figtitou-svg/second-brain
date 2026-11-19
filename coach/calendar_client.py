@@ -308,7 +308,14 @@ class GoogleCalendarClient:
                                  body={"summary": title, "colorId": color_id}).execute()
 
     def delete_event(self, event_id: str) -> None:
-        self._svc.events().delete(calendarId=self._cal, eventId=event_id).execute()
+        """Supprime l'événement ; déjà supprimé (410) ou introuvable (404) = le but est atteint, pas une erreur."""
+        try:
+            self._svc.events().delete(calendarId=self._cal, eventId=event_id).execute()
+        except Exception as exc:  # noqa: BLE001 - HttpError (googleapiclient importé paresseusement)
+            status = getattr(getattr(exc, "resp", None), "status", None) or getattr(exc, "status_code", None)
+            if int(status or 0) not in (404, 410):
+                raise
+            logging.getLogger("coach.calendar").info("événement %s déjà supprimé dans Google", event_id)
 
 
 def _locked(fn: Any) -> Any:

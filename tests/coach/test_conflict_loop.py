@@ -73,3 +73,30 @@ def test_remove_bot_event_and_hide_one_occurrence():
         assert not agenda_rules.is_hidden("BDR · TD", start)
     finally:
         agenda_rules.set_hidden_source(None)
+
+
+def test_deleting_an_event_already_gone_from_google_is_not_an_error():
+    from coach.calendar_client import GoogleCalendarClient
+
+    class Gone(Exception):
+        def __init__(self, status):
+            super().__init__(f"HttpError {status}")
+            self.resp = type("R", (), {"status": status})()
+
+    class Svc:
+        def __init__(self, status):
+            self.status = status
+
+        def events(self):
+            return self
+
+        def delete(self, **k):
+            return self
+
+        def execute(self):
+            raise Gone(self.status)
+    GoogleCalendarClient(Svc(410), "primary").delete_event("x")      # « Resource has been deleted »
+    GoogleCalendarClient(Svc(404), "primary").delete_event("x")
+    import pytest
+    with pytest.raises(Gone):
+        GoogleCalendarClient(Svc(500), "primary").delete_event("x")  # une vraie panne remonte toujours
