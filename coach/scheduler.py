@@ -78,11 +78,12 @@ class CoachScheduler:
         return self._now_fn().astimezone(self.tz)
 
     # --- placement ---------------------------------------------------------
-    def schedule_tasks(self, tasks: list[Task]) -> PlanResult:
-        """Enregistre les tâches, les planifie et crée les événements."""
+    def schedule_tasks(self, tasks: list[Task], quiet: bool = False) -> PlanResult:
+        """Enregistre les tâches, les planifie et crée les événements. `quiet` (placement automatique) : ne déplace
+        aucun autre bloc et ne prévient pas pour ce qui ne tient pas (le bot le demande le lundi)."""
         for t in tasks:
             self.db.upsert_task(t)
-        return self._place(tasks)
+        return self._place(tasks, quiet=quiet)
 
     def _not_before(self, when: str, now: datetime | None = None) -> datetime:
         """Début de la période où le report peut tomber : demain 00:00, ou lundi prochain 00:00."""
@@ -144,7 +145,7 @@ class CoachScheduler:
         return res, every
 
     def _place(self, tasks: list[Task], reuse_event: dict[str, str] | None = None,
-               not_before: datetime | None = None, free: list | None = None) -> PlanResult:
+               not_before: datetime | None = None, free: list | None = None, quiet: bool = False) -> PlanResult:
         """`free` : créneaux des anciens blocs de ces tâches (déjà retirés de la base), à ne plus compter comme occupés."""
         now = self.now()
         dues = [t.due for t in tasks if t.due] + [t.due for t in self.db.list_tasks("pending", "scheduled") if t.due]
@@ -152,12 +153,12 @@ class CoachScheduler:
         busy_all = self.calendar.freebusy(now, far)
         # on déplace d'abord le moins possible : rien, puis les blocs à échéance plus lointaine, puis tous
         # les blocs pas commencés ; on s'arrête au premier niveau où tout tient avant les échéances
-        levels = [{}, self._movable(tasks, now, False), self._movable(tasks, now, True)]
+        levels = [{}] if quiet else [{}, self._movable(tasks, now, False), self._movable(tasks, now, True)]
         for victims in levels:
             result, every = self._plan_with(tasks, victims, now, not_before, busy_all, free)
             if not result.unplaced:
                 break
-        return self._apply(result, every, victims, reuse_event)
+        return self._apply(result, every, victims, reuse_event, quiet)
 
     def replan_all(self) -> str:
         """Replace d'un coup tous les blocs pas encore commencés (priorité puis échéance), sans question."""
@@ -175,7 +176,7 @@ class CoachScheduler:
         return msg
 
     def _apply(self, result: PlanResult, every: list[Task], victims: dict[str, list[Block]],
-               reuse_event: dict[str, str] | None) -> PlanResult:
+               reuse_event: dict[str, str] | None, quiet: bool = False) -> PlanResult:
         reuse = dict(reuse_event or {})
         for tid, blks in victims.items():
             for i, b in enumerate(sorted(blks, key=lambda x: x.start)):
@@ -197,7 +198,7 @@ class CoachScheduler:
                 blk.calendar_event_id = self.calendar.create_event(blk, task, blk.style)
             self.db.add_block(blk)
             self.db.set_task_status(task.id, "scheduled")
-        for tid, minutes in result.unplaced.items():
+        for tid, minutes in ({} if quiet else result.unplaced).items():
             t = by_id[tid]
             self.notify(
                 f"⚠️ <b>Pas assez de place</b>\nImpossible de placer {fmt.dur(minutes)} pour "

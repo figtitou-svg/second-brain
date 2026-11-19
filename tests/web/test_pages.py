@@ -146,8 +146,10 @@ def test_tasks_page_buttons_use_existing_callbacks():
         await login(c)
         text = await (await c.get("/taches")).text()
         detail = await (await c.get(f"/taches/{t.id}")).text()
-        for cb in (f"td:{t.id}", f"plan:{t.id}", f"dur:{t.id}", f"tpo:{t.id}", f"tnw:{t.id}", f"ign:{t.id}"):
+        for cb in (f"td:{t.id}", f"tpo:{t.id}", f"tnw:{t.id}", f"ign:{t.id}"):
             assert f'data-cb="{cb}"' in detail and f'data-cb="{cb}"' not in text, cb
+        assert f'data-cb="plan:{t.id}"' not in detail and f'data-cb-base="tpd:{t.id}:"' in detail   # le bot place seul
+        assert f'action="/taches/{t.id}/modifier"' in detail and 'name="projstep"' in detail
         assert 'href="/taches?filtre=retard"' in text
         retard = await (await c.get("/taches?filtre=retard")).text()
         assert "Envoyer le devis" not in retard and 'data-refresh="/fragment/taches?filtre=retard"' in retard

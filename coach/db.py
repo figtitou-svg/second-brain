@@ -372,6 +372,9 @@ class Database:
             rows = self._query("SELECT * FROM tasks ORDER BY created_at, id")
         return [self._task(r) for r in rows]
 
+    def clear_task_description(self, task_id: str) -> None:
+        self._exec("UPDATE tasks SET description=NULL WHERE id=?", (task_id,))
+
     def set_task_status(self, task_id: str, status: str) -> None:
         self._exec("UPDATE tasks SET status=? WHERE id=?", (status, task_id))
 

@@ -38,6 +38,7 @@ class CoachPort(Protocol):
     def add_event(self, event_id: str) -> str: ...
     def add_task(self, text: str, sensitivity: Sensitivity) -> list[Any]: ...   # « /task … »
     def add_rdv(self, text: str, sensitivity: Sensitivity) -> tuple[str, Any, str | None]: ...   # « /rdv … »
+    def edit_task(self, task_id: str, fields: dict) -> str: ...   # formulaire « Modifier » du site
     def rdv_set_time(self, event_id: str, hh: int, mm: int) -> str: ...
     def read_photo(self, path: str) -> str: ...           # ce qu'on lit sur une photo (IA d'image)
     def ignore_event(self, event_id: str) -> str: ...
@@ -135,6 +136,9 @@ class CoachAdapter:
 
     def add_rdv(self, text: str, sensitivity: Sensitivity) -> tuple[str, Any, str | None]:
         return self._store.add_rdv(text, sensitivity)
+
+    def edit_task(self, task_id: str, fields: dict) -> str:
+        return self._store.edit_task(task_id, fields)
 
     def rdv_set_time(self, event_id: str, hh: int, mm: int) -> str:
         return self._store.rdv_set_time(event_id, hh, mm)

@@ -467,8 +467,34 @@
     if (Date.now() < swipeClick) { ev.preventDefault(); ev.stopPropagation(); swipeClick = 0; }
   }, true);
 
+  // Reporter à un jour choisi : le bouton prend la date du calendrier
+  document.addEventListener("input", (ev) => {
+    const inp = ev.target;
+    if (!inp.matches?.("input[data-date-for]")) return;
+    const btn = document.getElementById(inp.dataset.dateFor);
+    if (!btn) return;
+    if (inp.value) { btn.dataset.cb = btn.dataset.cbBase + inp.value; btn.disabled = false; }
+    else { delete btn.dataset.cb; btn.disabled = true; }
+  });
+
   document.addEventListener("submit", async (ev) => {
     const form = ev.target;
+    if (form.matches("[data-edit]")) {         // « Modifier » une tâche : enregistré sans quitter la page
+      ev.preventDefault();
+      const fields = Object.fromEntries(new FormData(form));
+      const [project, milestone] = String(fields.projstep || "|").split("|");
+      delete fields.projstep;
+      Object.assign(fields, {project, milestone});
+      const btn = form.querySelector("button[type=submit]");
+      if (btn) btn.disabled = true;
+      const html = await post(form.action, fields);
+      if (btn) btn.disabled = false;
+      if (html === null) return;
+      show(html, false, btn);
+      form.closest("details")?.removeAttribute("open");
+      await refresh(true);
+      return;
+    }
     if (form.matches("[data-say-form]")) {
       ev.preventDefault();
       const input = form.querySelector("input[name=text]");

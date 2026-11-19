@@ -539,6 +539,9 @@ class BotService:
                 return Reply(note + text, buttons)
             if action == "ptl":  # retour à /tasks : les dossiers
                 return Reply("📋 <b>Tâches ouvertes</b>", self.coach.task_folders())
+            if action == "tpd":       # page de la tâche : reporter à la date choisie (« tpd:<id>:AAAA-MM-JJ »)
+                task_id, _, day = rest.rpartition(":")
+                return Reply(self.coach.postpone_task(task_id, day))
             if action in ("tpo", "tnw"):
                 return Reply(self.coach.postpone_task(rest, "tomorrow" if action == "tpo" else "next_week"))
             if action == "mv":

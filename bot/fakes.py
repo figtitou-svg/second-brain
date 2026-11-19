@@ -55,6 +55,10 @@ class FakeCoach:
     def extract_items(self, text: str, source_id: str, sensitivity: Sensitivity) -> tuple[list[Any], list[Any]]:
         return self.extract_tasks(text, source_id, sensitivity), list(getattr(self, "events", []))
 
+    def edit_task(self, task_id: str, fields: dict) -> str:
+        self.calls.append(("edit_task", task_id, fields))
+        return f"✏️ {fields.get('name', task_id)} modifiée."
+
     def add_rdv(self, text: str, sensitivity: Sensitivity) -> tuple[str, Any, str | None]:
         self.calls.append(("add_rdv", text, sensitivity))
         if "sans heure" in text:

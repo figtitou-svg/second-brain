@@ -584,3 +584,27 @@ main>h1.note-h{line-height:1.25;padding-top:8px}
 .prio .row-actions{flex-wrap:nowrap;gap:6px}
 .prio .row-actions button{flex:1 1 0;min-width:0;padding:0 6px;font-size:14px;white-space:nowrap}
 .prio-card:not(.first) .row-actions button{min-height:38px}
+
+/* page d'une tâche : Reporter (menu) et Modifier (formulaire) */
+.tactions{align-items:flex-start}
+.popmenu{position:relative;flex:1 1 auto}
+.popmenu>summary{list-style:none;display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;
+  border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--card)}
+.popmenu>summary::-webkit-details-marker{display:none}
+.popbody{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.popbody button{min-height:42px}
+.pickday{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.editbox>summary{cursor:pointer;font-weight:600;min-height:40px;display:flex;align-items:center;gap:6px}
+.editform{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.editform label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0;flex:1 1 180px}
+.editform input,.editform select,.editform textarea{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:10px;min-height:44px;width:100%;box-sizing:border-box}
+.editform .erow{display:flex;flex-wrap:wrap;gap:12px}
+.editform .mode{border:0;padding:0;margin:0;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;flex:1 1 160px}
+.editform .mode label{flex-direction:row;align-items:center;gap:8px;color:var(--text)}
+.editform .mode input{width:auto;min-height:auto}
+.editform>label{flex:0 0 auto}
+.editform .mode{flex:0 0 auto;justify-content:flex-start}
+.editform .mode label{flex:0 0 auto;min-height:36px}
+.editform .erow>label{flex:1 1 160px}
+.editform .mode>label{flex:0 0 auto}

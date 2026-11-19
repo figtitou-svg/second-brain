@@ -140,6 +140,8 @@ def main() -> None:
     add("projects", lambda: store.projects_idle_check(notify), 15)  # propose la suite des projets sans tâche ouverte
     add("pwatch", lambda: store.projects_watch(notify), 30)         # prévient d'un projet qui stagne ou dont le rendu approche
     add("job_hours", store.ensure_work_quota, 60)                   # 10 h / semaine pour Franck : créées et placées
+    add("autoplan", lambda: log.info("placement auto : %d tâche(s) placée(s)", store.autoplan()), 15)
+    add("weekask", lambda: store.monday_question(notify), 30)       # lundi : les tâches que le bot ne sait pas placer
     # enjeu des tâches (1 à 5) noté par Groq d'abord : titre, catégorie, projet, échéance seulement (jamais un mail)
     store.configure_stakes(functools.partial(router.complete, sensitivity="public", prefer_fallback=True, timeout=40))
     # /rdv : texte -> rendez-vous (même confidentialité que les notes) ; photos lues par une IA d'image (Groq, Gemini)

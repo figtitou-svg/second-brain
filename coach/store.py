@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from coach import dedupe, extract, fmt, project_assistant, project_service, project_watch
 from coach import agenda_rules, categories, priorities, rdv, work_quota
+from coach import focus as focus_rules
 from coach import infos as info_cases
 from coach.db import Database
 from coach.models import Event, Task
@@ -335,6 +336,150 @@ def rdv_set_time(event_id: str, hh: int, mm: int) -> str:
     new = rdv.at_hour(ev, hh, mm)
     db.set_event_times(event_id, new.start, new.end)
     return add_event(event_id)
+
+
+AUTOPLAN_BATCH = 12          # tâches placées par passage (le reste au passage suivant)
+ASK_MAX = 8                  # tâches listées dans la question du lundi
+
+
+def _current_step(db: Database) -> dict[str, str | None]:
+    """Projet -> étape en cours (la première ouverte, par position) ; None si le projet n'a pas d'étape."""
+    out: dict[str, str | None] = {}
+    for p in db.list_projects("active", "paused"):
+        ms = sorted(db.list_milestones(p.id), key=lambda m: m.position)
+        out[p.id] = next((m.id for m in ms if m.status == "open"), None) if ms else None
+    return out
+
+
+def _to_place(db: Database) -> list[Task]:
+    """Tâches ouvertes sans créneau que le bot doit placer : pas proposées par un mail, pas trop longues ; dans
+    un projet à étapes, seulement celles de l'étape en cours (les suivantes viendront à leur tour)."""
+    steps = _current_step(db)
+    busy = {b.task_id for b in db.list_blocks(open_only=True)}
+    out = []
+    for t in db.list_tasks("pending", "scheduled"):
+        if t.id in busy or t.estimated_minutes > MAX_PLAN_MINUTES:
+            continue
+        if t.project_id in steps and steps[t.project_id] is not None and t.milestone_id != steps[t.project_id]:
+            continue
+        out.append(t)
+    return out
+
+
+def autoplan() -> int:
+    """Place tout seul les tâches ouvertes sans créneau (sans déplacer les autres, sans message). Une tâche qui ne
+    tient pas n'est réessayée que le lendemain ; elle est demandée le lundi. Retourne le nombre de tâches placées."""
+    db, sched = _need()
+    day = sched.now().date().isoformat()
+    todo = [t for t in _to_place(db) if not db.has_notification(f"autoplan:{day}:{t.id}")][:AUTOPLAN_BATCH]
+    if not todo:
+        return 0
+    res = sched.schedule_tasks(todo, quiet=True)
+    placed = {b.task_id for b in res.blocks}
+    for t in todo:
+        if t.id not in placed:
+            db.claim_notification(f"autoplan:{day}:{t.id}")   # rien avant demain pour celle-ci
+    return len(placed)
+
+
+def unsure_tasks() -> list[Task]:
+    """Tâches que le bot n'a pas su placer (pas de place avant l'échéance, ou trop longues)."""
+    db, _ = _need()
+    busy = {b.task_id for b in db.list_blocks(open_only=True)}
+    steps = _current_step(db)
+    out = []
+    for t in db.list_tasks("pending"):
+        if t.id in busy:
+            continue
+        if t.project_id in steps and steps[t.project_id] is not None and t.milestone_id != steps[t.project_id]:
+            continue
+        out.append(t)
+    return out
+
+
+def monday_question(notify, now: datetime | None = None) -> bool:
+    """Le lundi (à partir de 8h30), une fois : « je ne sais pas où mettre ces tâches », avec un choix par tâche."""
+    db, sched = _need()
+    now = now or sched.now()
+    if now.weekday() != 0 or now.time() < datetime.strptime("08:30", "%H:%M").time():
+        return False
+    todo = unsure_tasks()
+    if not todo or not db.claim_notification(f"weekask:{now.date().isoformat()}"):
+        return False
+    lines = ["🗓 <b>Début de semaine</b> : je ne sais pas où mettre ces tâches. Que veux-tu en faire ?"]
+    buttons = []
+    for i, t in enumerate(todo[:ASK_MAX], 1):
+        why = (f"trop longue ({fmt.dur(t.estimated_minutes)})" if t.estimated_minutes > MAX_PLAN_MINUTES
+               else f"pas de place avant {fmt.when(t.due)}" if t.due else "pas de place cette semaine")
+        lines.append(f"{i}. <b>{fmt.esc(t.title)}</b> · <i>{why}</i>")
+        buttons.append([(f"📌 {i} cette semaine", f"plan:{t.id}"), (f"⏭ {i} semaine pro", f"tnw:{t.id}"),
+                        (f"🗑 {i}", f"ign:{t.id}")])
+    if len(todo) > ASK_MAX:
+        lines.append(f"<i>+ {len(todo) - ASK_MAX} autre(s) dans « À trier » sur le site</i>")
+    notify("\n".join(lines), buttons)
+    return True
+
+
+PRIORITIES = ("low", "medium", "high")
+
+
+def edit_task(task_id: str, f: dict) -> str:
+    """Formulaire « Modifier » : titre, matière, projet et étape, date (échéance ou jour précis), durée, priorité,
+    description. Si le moment, la durée ou le titre changent, les créneaux sont refaits."""
+    from datetime import date as _date, time as _time
+    db, sched = _need()
+    t = db.get_task(task_id)
+    if t is None:
+        return "Tâche introuvable."
+    name = str(f.get("name", "")).strip()
+    if not name:
+        return "⚠️ Le titre ne peut pas être vide."
+    cat = str(f.get("cat", "")).strip()
+    code = categories.code_of(cat, categories.known(db)) or (cat or None)
+    m = focus_rules.SUBJECT_RE.match(name)
+    title = categories.prefixed(name[m.end():].strip() if m else name, code) if code else (
+        name[m.end():].strip() if m else name)
+    pid = str(f.get("project", "")).strip() or None
+    if pid and db.get_project(pid) is None:
+        pid = None
+    mid = str(f.get("milestone", "")).strip() or None
+    if mid and (not pid or (ms := db.get_milestone(mid)) is None or ms.project_id != pid):
+        mid = None
+    due, not_before = None, None
+    raw = str(f.get("date", "")).strip()
+    if raw:
+        try:
+            d = _date.fromisoformat(raw)
+        except ValueError:
+            return "⚠️ Date illisible."
+        due = datetime.combine(d, _time(23, 59, 59), tzinfo=sched.tz)
+        if f.get("mode") == "on":
+            not_before = datetime.combine(d, _time(0, 0), tzinfo=sched.tz)
+    try:
+        minutes = min(max(int(f.get("minutes", t.estimated_minutes)), 5), 24 * 60)
+    except (TypeError, ValueError):
+        minutes = t.estimated_minutes
+    prio = str(f.get("priority", t.priority))
+    prio = prio if prio in PRIORITIES else t.priority
+    desc = str(f.get("description", "")).strip()
+    new = t.model_copy(update={"title": title, "project_id": pid, "milestone_id": mid, "due": due,
+                               "not_before": not_before, "estimated_minutes": minutes, "priority": prio,
+                               "description": desc})
+    db.upsert_task(new)
+    if desc == "" and t.description:
+        db.clear_task_description(task_id)
+    moved = (new.title, new.due, new.not_before, new.estimated_minutes) != (t.title, t.due, t.not_before,
+                                                                           t.estimated_minutes)
+    blocks = db.list_blocks(task_id, open_only=True)
+    if moved and blocks and new.status in ("pending", "scheduled"):
+        for b in blocks:
+            if b.calendar_event_id:
+                sched.calendar.delete_event(b.calendar_event_id)
+            db.delete_block(b.id)
+        db.set_task_status(task_id, "pending")
+        if minutes <= MAX_PLAN_MINUTES:
+            return f"✏️ <b>{fmt.esc(new.title)}</b> modifiée.\n" + schedule(task_id)
+    return f"✏️ <b>{fmt.esc(new.title)}</b> modifiée."
 
 
 def remove_event(event_id: str) -> str:

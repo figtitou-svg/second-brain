@@ -30,15 +30,52 @@
   </section>
   {% if t.status in ("pending", "scheduled") %}
   {% if t.proposed %}<p class="muted" role="note">Proposée par un mail : elle n'est pas encore dans tes tâches.</p>{% endif %}
-  <div class="row-actions">
+  <div class="row-actions tactions">
     {% if t.proposed %}<button type="button" class="primary" data-cb="keep:{{ t.task_id }}">✅ Garder</button>{% endif %}
     <button type="button"{% if not t.proposed %} class="primary"{% endif %} data-cb="td:{{ t.task_id }}">✅ Fait</button>
-    <button type="button" data-cb="plan:{{ t.task_id }}">Planifier</button>
-    <button type="button" data-cb="dur:{{ t.task_id }}">⏱ Durée</button>
-    <button type="button" data-cb="tpo:{{ t.task_id }}">⏭ Demain</button>
-    <button type="button" data-cb="tnw:{{ t.task_id }}">📅 Semaine prochaine</button>
-    <button type="button" data-cb="ign:{{ t.task_id }}">🗑 Ignorer</button>
+    <details class="popmenu">
+      <summary class="button">⏭ Reporter</summary>
+      <div class="popbody">
+        <button type="button" data-cb="tpo:{{ t.task_id }}">Demain</button>
+        <button type="button" data-cb="tnw:{{ t.task_id }}">Semaine prochaine</button>
+        <label class="pickday">Choisir un jour <input type="date" data-date-for="tpd-{{ t.task_id }}" min="{{ t.edit.today if t.edit else '' }}"></label>
+        <button type="button" id="tpd-{{ t.task_id }}" data-cb-base="tpd:{{ t.task_id }}:" disabled>Reporter à ce jour</button>
+      </div>
+    </details>
+    <button type="button" data-cb="ign:{{ t.task_id }}">🗑 Supprimer</button>
   </div>
+  {% if t.edit %}{% set e = t.edit %}
+  <details class="card editbox">
+    <summary><span aria-hidden="true">✏️</span> Modifier</summary>
+    <form class="editform" data-edit action="/taches/{{ t.task_id }}/modifier">
+      <label>Titre<input name="name" value="{{ e.name }}" required maxlength="200"></label>
+      <div class="erow">
+        <label>Matière<select name="cat"><option value="">Aucune</option>{% for code, label in e.cats %}<option value="{{ code }}"{% if code == e.cat %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Projet / étape<select name="projstep">
+          <option value="|"{% if not e.project %} selected{% endif %}>Sans projet</option>
+          {% for p in e.projects %}
+          <optgroup label="{{ p.name }}">
+            <option value="{{ p.id }}|"{% if e.project == p.id and not e.milestone %} selected{% endif %}>{{ p.name }} (sans étape)</option>
+            {% for mid, mt in p.steps %}<option value="{{ p.id }}|{{ mid }}"{% if e.milestone == mid %} selected{% endif %}>{{ mt }}</option>{% endfor %}
+          </optgroup>{% endfor %}
+        </select></label>
+      </div>
+      <div class="erow">
+        <label>Jour<input type="date" name="date" value="{{ e.date }}"></label>
+        <fieldset class="mode"><legend class="sr-only">Type de date</legend>
+          <label><input type="radio" name="mode" value="due"{% if e.mode == "due" %} checked{% endif %}> avant ce jour</label>
+          <label><input type="radio" name="mode" value="on"{% if e.mode == "on" %} checked{% endif %}> ce jour-là</label>
+        </fieldset>
+      </div>
+      <div class="erow">
+        <label>Durée<select name="minutes">{% for m in e.durations %}<option value="{{ m }}"{% if m == e.minutes %} selected{% endif %}>{{ m|dur }}</option>{% endfor %}</select></label>
+        <label>Priorité<select name="priority">{% for k, l in PRIO.items() %}<option value="{{ k }}"{% if k == e.priority %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+      </div>
+      <label>Description<textarea name="description" rows="3" maxlength="2000">{{ e.description }}</textarea></label>
+      <div class="row-actions"><button type="submit" class="primary">Enregistrer</button></div>
+    </form>
+  </details>
+  {% endif %}
   {% elif t.status in ("done", "dropped") %}
   <div class="row-actions"><button type="button" data-cb="undo:{{ t.task_id }}">↩ Remettre dans mes tâches</button></div>
   {% endif %}

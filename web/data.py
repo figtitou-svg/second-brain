@@ -598,6 +598,7 @@ class TaskDetail:
     name: str = ""
     origin_note: str | None = None   # identifiant de la note qui garde le mail d'origine
     proposed: bool = False           # tâche proposée par un mail, pas encore gardée
+    edit: dict | None = None         # formulaire « Modifier » : valeurs actuelles et choix possibles
 
 
 def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetail | None:
@@ -613,6 +614,33 @@ def task_detail(db: Database, task_id: str, now: datetime, tz=None) -> TaskDetai
                       t.due is not None and t.due < now and t.status in projects.OPEN, p.id if p else None,
                       p.name if p else "Sans projet", step.title if step else None,
                       color, t.boost, t.reschedule_count, blocks, category_label(cat) if cat else None, name)
+
+
+DURATIONS = (5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480)
+
+
+def edit_form(db: Database, t: Task | None) -> dict | None:
+    """Valeurs actuelles et listes de choix du formulaire « Modifier » d'une tâche."""
+    if t is None:
+        return None
+    from coach import categories
+    cat, name = split_category(t.title)
+    cats = [(c["code"], c["name"]) for c in categories.known(db)]
+    if cat and not any(projects.fold(c) == projects.fold(cat) for c, _ in cats):
+        cats.append((cat, cat))
+    current = next((c for c, _ in cats if cat and projects.fold(c) == projects.fold(cat)), "")
+    projs = []
+    for p in db.list_projects("active", "paused"):
+        ms = sorted(db.list_milestones(p.id), key=lambda m: m.position)
+        projs.append({"id": p.id, "name": p.name, "steps": [(m.id, m.title) for m in ms]})
+    day = (t.not_before or t.due)
+    mins = sorted(set(DURATIONS) | {t.estimated_minutes})
+    return {"name": name if cat else t.title, "cat": current, "cats": cats, "project": t.project_id or "",
+            "milestone": t.milestone_id or "", "projects": projs,
+            "date": day.astimezone(day.tzinfo).date().isoformat() if day else "",
+            "mode": "on" if t.not_before else "due", "minutes": t.estimated_minutes, "durations": mins,
+            "priority": t.priority, "description": t.description or "",
+            "today": datetime.now().astimezone().date().isoformat()}
 
 
 @dataclass(frozen=True)
@@ -909,7 +937,7 @@ class Views:
         by_source = getattr(self.notes_provider, "by_source", None)
         if t is not None and by_source and (t.source_id or "").startswith(("gmail:", "insa:")):
             origin = by_source(t.source_id)           # le mail d'origine, gardé en mémoire
-        return replace(d, origin_note=origin, proposed=self.db.is_proposed(task_id))
+        return replace(d, origin_note=origin, proposed=self.db.is_proposed(task_id), edit=edit_form(self.db, t))
 
     def projects(self) -> list[ProjectCard]:
         return project_cards(self.db, self.now())

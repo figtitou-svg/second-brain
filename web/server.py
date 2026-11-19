@@ -327,6 +327,20 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
             discussion.add(str(form.get("label", "")).strip()[:200] or data, [reply])
         return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [reply]))
 
+    async def edit_task(request: web.Request) -> web.Response:
+        """Formulaire « Modifier » d'une tâche : enregistre, puis répond comme un clic (bandeau)."""
+        form = await request.post()
+        fields = {k: str(form.get(k, "")) for k in ("name", "cat", "project", "milestone", "date", "mode",
+                                                      "minutes", "priority", "description")}
+        try:
+            text = await blocking(deps.svc.coach.edit_task, request.match_info["id"], fields)
+        except Exception:  # noqa: BLE001 - jamais de trace Python à l'écran
+            log.exception("modification de la tâche échouée")
+            text = actions.CLICK_FAILED
+        badge_cache.invalidate()
+        changed()
+        return page("_exchange.html", request, ex=actions.Exchange(time.time(), "", [Reply(text)]))
+
     async def events(request: web.Request) -> web.StreamResponse:
         if bus is None:
             raise web.HTTPNotFound()
@@ -449,6 +463,7 @@ def create_app(deps: Deps, password: str, secret: str, clock: Callable[[], float
         web.get("/discussion", protected(discussion_page)), web.get("/systeme", protected(system_page)),
         web.get("/fragment/discussion", protected(discussion_fragment)),
         web.post("/say", protected(say)), web.post("/click", protected(click)),
+        web.post("/taches/{id}/modifier", protected(edit_task)),
         web.get("/events", protected(events)), web.get("/fragment/message/{id}", protected(message_fragment)),
         *[route for name, (full, fragment) in pages.items()
           for route in (web.get(f"/{name}", protected(full)), web.get(f"/fragment/{name}", protected(fragment)))],
